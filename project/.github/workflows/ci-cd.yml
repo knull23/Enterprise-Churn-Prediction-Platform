@@ -1,0 +1,181 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  # Frontend Tests and Build
+  frontend:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+        cache: 'npm'
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Run ESLint
+      run: npm run lint
+    
+    - name: Run TypeScript check
+      run: npx tsc --noEmit
+    
+    - name: Build frontend
+      run: npm run build
+      env:
+        VITE_API_URL: ${{ secrets.VITE_API_URL }}
+    
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: frontend-build
+        path: dist/
+
+  # Backend Tests
+  backend:
+    runs-on: ubuntu-latest
+    
+    services:
+      mongodb:
+        image: mongo:5.0
+        ports:
+          - 27017:27017
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+    
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('backend/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+    
+    - name: Install dependencies
+      run: |
+        cd backend
+        pip install -r requirements.txt
+        pip install pytest pytest-cov flake8
+    
+    - name: Run linting
+      run: |
+        cd backend
+        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+        flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+    
+    - name: Create test models
+      run: |
+        cd backend
+        mkdir -p models
+        python -c "
+import pickle
+import numpy as np
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.preprocessing import LabelEncoder
+
+# Create dummy model
+model = RandomForestClassifier(n_estimators=10, random_state=42)
+X_dummy = np.random.rand(100, 10)
+y_dummy = np.random.randint(0, 2, 100)
+model.fit(X_dummy, y_dummy)
+
+# Create dummy encoder
+encoder = LabelEncoder()
+encoder.fit(['A', 'B', 'C'])
+
+# Save models
+with open('models/xgboost_model.pkl', 'wb') as f:
+    pickle.dump(model, f)
+with open('models/encoder.pkl', 'wb') as f:
+    pickle.dump(encoder, f)
+"
+    
+    - name: Test Flask app
+      run: |
+        cd backend
+        python -c "
+from app import app
+import os
+os.environ['MONGO_URI'] = 'mongodb://localhost:27017/test_churn'
+os.environ['SECRET_KEY'] = 'test-secret'
+with app.test_client() as client:
+    response = client.get('/api/health')
+    print(f'Health check status: {response.status_code}')
+    assert response.status_code == 200
+"
+
+  # Deploy to staging
+  deploy-staging:
+    needs: [frontend, backend]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/develop'
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Download build artifacts
+      uses: actions/download-artifact@v3
+      with:
+        name: frontend-build
+        path: dist/
+    
+    - name: Deploy to Vercel (Staging)
+      uses: amondnet/vercel-action@v25
+      with:
+        vercel-token: ${{ secrets.VERCEL_TOKEN }}
+        vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+        vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+        scope: ${{ secrets.VERCEL_ORG_ID }}
+    
+    - name: Deploy backend to Railway (Staging)
+      run: |
+        echo "Deploying backend to staging environment"
+        # Add Railway deployment commands here
+
+  # Deploy to production
+  deploy-production:
+    needs: [frontend, backend]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Download build artifacts
+      uses: actions/download-artifact@v3
+      with:
+        name: frontend-build
+        path: dist/
+    
+    - name: Deploy to Vercel (Production)
+      uses: amondnet/vercel-action@v25
+      with:
+        vercel-token: ${{ secrets.VERCEL_TOKEN }}
+        vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+        vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+        vercel-args: '--prod'
+        scope: ${{ secrets.VERCEL_ORG_ID }}
+    
+    - name: Deploy backend to Railway (Production)
+      run: |
+        echo "Deploying backend to production environment"
+        # Add Railway deployment commands here
+    
+    - name: Notify team
+      run: |
+        echo "Production deployment completed successfully!"

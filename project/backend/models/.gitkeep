@@ -1,0 +1,2 @@
+# This directory contains the machine learning models
+# Place your xgboost_model.pkl, encoder.pkl, and scaler.pkl files here
