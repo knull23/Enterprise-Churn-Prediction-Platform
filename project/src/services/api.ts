@@ -17,7 +17,7 @@ class ApiService {
 
     const defaultHeaders: HeadersInit = {
       'Content-Type': 'application/json',
-      ...(token && { Authorization: `Bearer ${token}` }),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
     };
 
     const config: RequestInit = {
@@ -27,7 +27,7 @@ class ApiService {
         ...(options.headers || {}),
       },
       body: options.body,
-      credentials: 'include', // Important for CORS with cookies or tokens
+      credentials: 'include', // Needed for CORS with cookies/tokens
     };
 
     try {
@@ -85,8 +85,13 @@ class ApiService {
 
   async verifyToken(token: string): Promise<User> {
     const response = await this.request<User>('/auth/verify', {
-      headers: { Authorization: `Bearer ${token}` },
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
     });
+
     if (response.success && response.data) {
       return response.data;
     }
@@ -97,7 +102,7 @@ class ApiService {
     try {
       const response = await fetch(`${this.baseUrl}/health`);
       return await response.json();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Health check failed:', error);
       return { status: 'error', error: error.message };
     }

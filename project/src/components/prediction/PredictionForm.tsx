@@ -10,34 +10,9 @@ interface PredictionFormProps {
   isLoading: boolean;
 }
 
-const contractOptions = [
-  { value: 'Month-to-month', label: 'Month-to-month' },
-  { value: 'One year', label: 'One year' },
-  { value: 'Two year', label: 'Two year' }
-];
-
-const paymentMethodOptions = [
-  { value: 'Electronic check', label: 'Electronic check' },
-  { value: 'Mailed check', label: 'Mailed check' },
-  { value: 'Bank transfer', label: 'Bank transfer (automatic)' },
-  { value: 'Credit card', label: 'Credit card (automatic)' }
-];
-
-const internetServiceOptions = [
-  { value: 'DSL', label: 'DSL' },
-  { value: 'Fiber optic', label: 'Fiber optic' },
-  { value: 'No', label: 'No internet service' }
-];
-
 const yesNoOptions = [
   { value: 'Yes', label: 'Yes' },
   { value: 'No', label: 'No' }
-];
-
-const yesNoInternetOptions = [
-  { value: 'Yes', label: 'Yes' },
-  { value: 'No', label: 'No' },
-  { value: 'No internet service', label: 'No internet service' }
 ];
 
 export const PredictionForm: React.FC<PredictionFormProps> = ({
@@ -47,21 +22,21 @@ export const PredictionForm: React.FC<PredictionFormProps> = ({
   const [formData, setFormData] = useState<CustomerData>({
     tenure: 12,
     monthlyCharges: 65.0,
+    numReferrals: 2,
     totalCharges: 1500.0,
     contract: 'Month-to-month',
     paymentMethod: 'Electronic check',
-    internetService: 'Fiber optic',
+    onlineBackup: 'No',
     onlineSecurity: 'No',
     techSupport: 'No',
-    streamingTV: 'No',
-    paperlessBilling: 'Yes',
-    senior: 'No',
-    partner: 'No',
     dependents: 'No'
   });
 
-  const handleInputChange = (field: keyof CustomerData, value: string | number) => {
-    setFormData(prev => ({
+  const handleInputChange = (
+    field: keyof CustomerData,
+    value: string | number
+  ) => {
+    setFormData((prev) => ({
       ...prev,
       [field]: value
     }));
@@ -77,117 +52,122 @@ export const PredictionForm: React.FC<PredictionFormProps> = ({
       <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-6">
         Customer Information
       </h2>
-      
+
       <form onSubmit={handleSubmit} className="space-y-6">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           <Input
-            label="Tenure (months)"
+            label="Tenure (Months)"
             type="number"
             value={formData.tenure}
-            onChange={(e) => handleInputChange('tenure', parseInt(e.target.value))}
+            onChange={(e) =>
+              handleInputChange('tenure', parseInt(e.target.value))
+            }
             min="0"
             max="100"
             required
           />
-          
+
           <Input
             label="Monthly Charges ($)"
             type="number"
             step="0.01"
             value={formData.monthlyCharges}
-            onChange={(e) => handleInputChange('monthlyCharges', parseFloat(e.target.value))}
+            onChange={(e) =>
+              handleInputChange('monthlyCharges', parseFloat(e.target.value))
+            }
             min="0"
             required
           />
-          
+
+          <Input
+            label="Number of Referrals"
+            type="number"
+            value={formData.numReferrals}
+            onChange={(e) =>
+              handleInputChange('numReferrals', parseInt(e.target.value))
+            }
+            min="0"
+            required
+          />
+
           <Input
             label="Total Charges ($)"
             type="number"
             step="0.01"
             value={formData.totalCharges}
-            onChange={(e) => handleInputChange('totalCharges', parseFloat(e.target.value))}
+            onChange={(e) =>
+              handleInputChange('totalCharges', parseFloat(e.target.value))
+            }
             min="0"
             required
           />
-          
+
           <Select
             label="Contract Type"
             value={formData.contract}
-            onChange={(e) => handleInputChange('contract', e.target.value as CustomerData['contract'])}
-            options={contractOptions}
+            onChange={(e) =>
+              handleInputChange('contract', e.target.value as CustomerData['contract'])
+            }
+            options={[
+              { value: 'Month-to-month', label: 'Month-to-month' },
+              { value: 'One year', label: 'One year' },
+              { value: 'Two year', label: 'Two year' }
+            ]}
           />
-          
+
           <Select
             label="Payment Method"
             value={formData.paymentMethod}
-            onChange={(e) => handleInputChange('paymentMethod', e.target.value as CustomerData['paymentMethod'])}
-            options={paymentMethodOptions}
+            onChange={(e) =>
+              handleInputChange('paymentMethod', e.target.value as CustomerData['paymentMethod'])
+            }
+            options={[
+              { value: 'Electronic check', label: 'Electronic check' },
+              { value: 'Mailed check', label: 'Mailed check' },
+              { value: 'Bank transfer (automatic)', label: 'Bank transfer (automatic)' },
+              { value: 'Credit card (automatic)', label: 'Credit card (automatic)' }
+            ]}
           />
-          
+
           <Select
-            label="Internet Service"
-            value={formData.internetService}
-            onChange={(e) => handleInputChange('internetService', e.target.value as CustomerData['internetService'])}
-            options={internetServiceOptions}
+            label="Online Backup"
+            value={formData.onlineBackup}
+            onChange={(e) =>
+              handleInputChange('onlineBackup', e.target.value as CustomerData['onlineBackup'])
+            }
+            options={yesNoOptions}
           />
-          
+
           <Select
             label="Online Security"
             value={formData.onlineSecurity}
-            onChange={(e) => handleInputChange('onlineSecurity', e.target.value as CustomerData['onlineSecurity'])}
-            options={yesNoInternetOptions}
+            onChange={(e) =>
+              handleInputChange('onlineSecurity', e.target.value as CustomerData['onlineSecurity'])
+            }
+            options={yesNoOptions}
           />
-          
+
           <Select
             label="Tech Support"
             value={formData.techSupport}
-            onChange={(e) => handleInputChange('techSupport', e.target.value as CustomerData['techSupport'])}
-            options={yesNoInternetOptions}
-          />
-          
-          <Select
-            label="Streaming TV"
-            value={formData.streamingTV}
-            onChange={(e) => handleInputChange('streamingTV', e.target.value as CustomerData['streamingTV'])}
-            options={yesNoInternetOptions}
-          />
-          
-          <Select
-            label="Paperless Billing"
-            value={formData.paperlessBilling}
-            onChange={(e) => handleInputChange('paperlessBilling', e.target.value as CustomerData['paperlessBilling'])}
+            onChange={(e) =>
+              handleInputChange('techSupport', e.target.value as CustomerData['techSupport'])
+            }
             options={yesNoOptions}
           />
-          
-          <Select
-            label="Senior Citizen"
-            value={formData.senior}
-            onChange={(e) => handleInputChange('senior', e.target.value as CustomerData['senior'])}
-            options={yesNoOptions}
-          />
-          
-          <Select
-            label="Partner"
-            value={formData.partner}
-            onChange={(e) => handleInputChange('partner', e.target.value as CustomerData['partner'])}
-            options={yesNoOptions}
-          />
-          
+
           <Select
             label="Dependents"
             value={formData.dependents}
-            onChange={(e) => handleInputChange('dependents', e.target.value as CustomerData['dependents'])}
+            onChange={(e) =>
+              handleInputChange('dependents', e.target.value as CustomerData['dependents'])
+            }
             options={yesNoOptions}
           />
         </div>
-        
+
         <div className="flex justify-end">
-          <Button
-            type="submit"
-            isLoading={isLoading}
-            size="lg"
-            className="px-8"
-          >
+          <Button type="submit" isLoading={isLoading} size="lg" className="px-8">
             Predict Churn
           </Button>
         </div>

@@ -11,6 +11,7 @@ from pymongo import MongoClient
 from bson import ObjectId
 import logging
 from dotenv import load_dotenv
+from config import config
 
 # Load environment variables
 load_dotenv()
@@ -19,9 +20,11 @@ load_dotenv()
 app = Flask(__name__)
 app.config['JWT_SECRET_KEY'] = os.getenv('SECRET_KEY', 'your-secret-key-change-in-production')
 app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=24)
+app.config.from_object(config['default'])
 
 # Initialize extensions
-CORS(app, supports_credentials=True, origins=["http://localhost:5174"])
+CORS(app, resources={r"/api/*": {"origins": "http://localhost:5175"}}, supports_credentials=True)
+
 jwt = JWTManager(app)
 
 # Configure logging
@@ -39,6 +42,9 @@ except Exception as e:
     logger.error(f"Failed to connect to MongoDB: {e}")
     db = None
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+MODELS_DIR = os.path.join(BASE_DIR, 'models')
+
 # Load ML models (memoized)
 model = None
 encoder = None
@@ -47,9 +53,9 @@ scaler = None
 def load_models():
     global model, encoder, scaler
     try:
-        model_path = os.getenv('MODEL_PATH', 'models/final_xgboost_top10_model.pkl')
-        encoder_path = os.getenv('ENCODER_PATH', 'models/encoder.pkl')
-        scaler_path = os.getenv('SCALER_PATH', './models/scaler.pkl')
+        model_path = os.getenv('MODEL_PATH', os.path.join(MODELS_DIR, 'final_xgboost_top10_model.pkl'))
+        encoder_path = os.getenv('ENCODER_PATH', os.path.join(MODELS_DIR, 'encoder.pkl'))
+        scaler_path = os.getenv('SCALER_PATH', os.path.join(MODELS_DIR, 'scaler.pkl'))
 
         with open(model_path, 'rb') as f:
             model = pickle.load(f)
@@ -57,7 +63,6 @@ def load_models():
         with open(encoder_path, 'rb') as f:
             encoder = pickle.load(f)
 
-        # Try to load scaler, but it's optional
         try:
             with open(scaler_path, 'rb') as f:
                 scaler = pickle.load(f)
@@ -114,7 +119,7 @@ def calculate_shap_values(customer_data):
     return sorted(features, key=lambda x: abs(x['value']), reverse=True)[:6]
 
 # Routes
-@app.route('/api/auth/login', methods=['GET','POST'])
+@app.route('/api/auth/login', methods=['POST'])
 def login():
     try:
         data = request.get_json()
@@ -124,7 +129,7 @@ def login():
         if not email or not password:
             return jsonify(format_response(False, error="Email and password required")), 400
 
-        if not db:
+        if db is None:
             return jsonify(format_response(False, error="Database connection failed")), 500
 
         user = users_collection.find_one({"email": email})
@@ -150,7 +155,7 @@ def login():
 def verify_token():
     try:
         user_id = get_jwt_identity()
-        if not db:
+        if db is None:
             return jsonify(format_response(False, error="Database connection failed")), 500
 
         user = users_collection.find_one({"_id": ObjectId(user_id)})
@@ -174,46 +179,76 @@ def verify_token():
 @jwt_required()
 def predict():
     try:
-        if not model or not encoder:
+        if model is None or encoder is None:
             return jsonify(format_response(False, error="ML models not loaded")), 500
 
         data = request.get_json()
         user_id = get_jwt_identity()
 
-        # Validate required fields
-        required_fields = ['tenure', 'monthlyCharges', 'totalCharges', 'contract', 'paymentMethod', 'internetService']
+        # Define the expected model features (case and order sensitive!)
+        expected_columns = [
+            'Contract',
+            'Monthly Charge',
+            'Number of Referrals',
+            'Dependents',
+            'Avg Monthly GB Download',
+            'Tenure in Months',
+            'Payment Method',
+            'Online Backup',
+            'Online Security',
+            'Premium Tech Support'
+        ]
+
+        # Required input validation for original keys
+        required_fields = ['contract', 'monthlyCharges', 'numReferrals', 'dependents',
+                           'totalCharges', 'tenure', 'paymentMethod', 'onlineBackup',
+                           'onlineSecurity', 'techSupport']
         for field in required_fields:
             if field not in data:
                 return jsonify(format_response(False, error=f"Missing required field: {field}")), 400
 
-        # Prepare data for prediction
-        customer_data = pd.DataFrame([data])
+        # Rename input fields to match model feature names
+        column_mapping = {
+            'contract': 'Contract',
+            'monthlyCharges': 'Monthly Charge',
+            'numReferrals': 'Number of Referrals',
+            'dependents': 'Dependents',
+            'totalCharges': 'Avg Monthly GB Download',
+            'tenure': 'Tenure in Months',
+            'paymentMethod': 'Payment Method',
+            'onlineBackup': 'Online Backup',
+            'onlineSecurity': 'Online Security',
+            'techSupport': 'Premium Tech Support'
+        }
 
-        # Encode categorical variables
-        categorical_cols = ['contract', 'paymentMethod', 'internetService', 'onlineSecurity', 'techSupport', 'streamingTV', 'paperlessBilling', 'senior', 'partner', 'dependents']
+        renamed_data = {column_mapping[k]: v for k, v in data.items() if k in column_mapping}
 
-        for col in categorical_cols:
-            if col in customer_data.columns:
+        # Convert to DataFrame and ensure correct column order
+        customer_data = pd.DataFrame([renamed_data])
+        customer_data = customer_data.reindex(columns=expected_columns)
+
+        # Encode categorical columns (apply only if column exists)
+        for col in customer_data.columns:
+            if customer_data[col].dtype == object:
                 try:
                     customer_data[col] = encoder.transform(customer_data[col])
-                except:
-                    # Handle unknown categories
-                    customer_data[col] = 0
+                except Exception:
+                    customer_data[col] = 0  # Handle unknowns
 
-        # Scale numerical features if scaler is available
+        # Scale numeric columns if scaler exists
         if scaler:
-            numerical_cols = ['tenure', 'monthlyCharges', 'totalCharges']
-            customer_data[numerical_cols] = scaler.transform(customer_data[numerical_cols])
+            numeric_cols = customer_data.select_dtypes(include=[np.number]).columns
+            customer_data[numeric_cols] = scaler.transform(customer_data[numeric_cols])
 
-        # Make prediction
+        # Predict
         prediction_proba = model.predict_proba(customer_data)[0]
         prediction_label = "Churn" if prediction_proba[1] > 0.5 else "No Churn"
         probability = float(prediction_proba[1])
 
-        # Calculate SHAP values
+        # SHAP values (optional mock explanation)
         shap_values = calculate_shap_values(data)
 
-        # Create prediction record
+        # Save result
         prediction_record = {
             "id": str(ObjectId()),
             "timestamp": datetime.utcnow().isoformat(),
@@ -224,8 +259,7 @@ def predict():
             "userId": user_id
         }
 
-        # Save to database
-        if db:
+        if db is not None:
             predictions_collection.insert_one({
                 **prediction_record,
                 "_id": ObjectId(prediction_record["id"]),
@@ -238,11 +272,12 @@ def predict():
         logger.error(f"Prediction error: {e}")
         return jsonify(format_response(False, error="Prediction failed")), 500
 
+
 @app.route('/api/history', methods=['GET'])
 @jwt_required()
 def get_history():
     try:
-        if not db:
+        if db is None:
             return jsonify(format_response(False, error="Database connection failed")), 500
 
         user_id = get_jwt_identity()
@@ -298,7 +333,7 @@ def get_history():
 @jwt_required()
 def get_dashboard_stats():
     try:
-        if not db:
+        if db is None:
             return jsonify(format_response(False, error="Database connection failed")), 500
 
         user_id = get_jwt_identity()
@@ -347,7 +382,7 @@ def get_dashboard_stats():
 @jwt_required()
 def clear_history():
     try:
-        if not db:
+        if db is None:
             return jsonify(format_response(False, error="Database connection failed")), 500
 
         user_id = get_jwt_identity()

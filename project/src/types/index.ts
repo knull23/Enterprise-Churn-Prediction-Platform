@@ -5,6 +5,23 @@ export interface User {
   name: string;
 }
 
+export interface CustomerData {
+  contract: 'Month-to-month' | 'One year' | 'Two year';
+  monthlyCharges: number;
+  numReferrals: number;
+  dependents: 'Yes' | 'No';
+  totalCharges: number;
+  tenure: number;
+  paymentMethod:
+    | 'Electronic check'
+    | 'Mailed check'
+    | 'Bank transfer (automatic)'
+    | 'Credit card (automatic)';
+  onlineBackup: 'Yes' | 'No';
+  onlineSecurity: 'Yes' | 'No';
+  techSupport: 'Yes' | 'No';
+}
+
 export interface ChurnPrediction {
   id: string;
   timestamp: string;
@@ -13,22 +30,6 @@ export interface ChurnPrediction {
   probability: number;
   shapValues: ShapValue[];
   userId?: string;
-}
-
-export interface CustomerData {
-  tenure: number;
-  monthlyCharges: number;
-  totalCharges: number;
-  contract: 'Month-to-month' | 'One year' | 'Two year';
-  paymentMethod: 'Electronic check' | 'Mailed check' | 'Bank transfer' | 'Credit card';
-  internetService: 'DSL' | 'Fiber optic' | 'No';
-  onlineSecurity: 'Yes' | 'No' | 'No internet service';
-  techSupport: 'Yes' | 'No' | 'No internet service';
-  streamingTV: 'Yes' | 'No' | 'No internet service';
-  paperlessBilling: 'Yes' | 'No';
-  senior: 'Yes' | 'No';
-  partner: 'Yes' | 'No';
-  dependents: 'Yes' | 'No';
 }
 
 export interface ShapValue {
