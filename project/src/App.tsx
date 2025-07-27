@@ -25,6 +25,8 @@ import { Button } from './components/ui/Button';
 import { Modal } from './components/ui/Modal';
 import { ChurnTrendChart } from './components/charts/ChurnTrendChart';
 import { TenureScatterPlot } from './components/charts/TenureScatterPlot';
+import { ProbabilityHistogram } from './components/charts/ProbabilityHistogram';
+import { ChurnByContractBarChart } from './components/charts/ChurnByContractBarChart';
 
 function AppContent() {
   const { user, login, isLoading: authLoading } = useAuth();
@@ -216,14 +218,10 @@ function AppContent() {
 
             {/* 📈 New Graphs */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <ChurnTrendChart
-                data={predictionHistory.map((p) => ({
-                  date: new Date(p.timestamp).toLocaleDateString(),
-                  churnRate: p.prediction === 'Churn' ? 1 : 0,
-                  predictions: 1
-                }))}
-              />
+              <ChurnTrendChart data={predictionHistory} />
               <TenureScatterPlot predictions={predictionHistory} />
+              <ProbabilityHistogram predictions={predictionHistory} />
+              <ChurnByContractBarChart predictions={predictionHistory} />
             </div>
           </div>
         );
