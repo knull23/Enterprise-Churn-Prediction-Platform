@@ -1,3 +1,4 @@
+// 🔁 Imports
 import { useState, useEffect } from 'react';
 import { Toaster, toast } from 'react-hot-toast';
 import { Header } from './components/layout/Header';
@@ -11,24 +12,19 @@ import { HistoryTable } from './components/history/HistoryTable';
 import { AuthProvider, useAuth } from './hooks/useAuth';
 import { useDarkMode } from './hooks/useDarkMode';
 import { 
-  Users, 
-  TrendingUp, 
-  AlertTriangle, 
-  Activity,
-  Settings as SettingsIcon,
-  Shield,
-  Trash2
+  Users, TrendingUp, AlertTriangle, Activity,
+  Shield, Trash2
 } from 'lucide-react';
 import { 
-  ChurnPrediction, 
-  CustomerData, 
-  DashboardStats, 
-  HistoryFilters 
+  ChurnPrediction, CustomerData, 
+  DashboardStats, HistoryFilters 
 } from './types';
 import { apiService } from './services/api';
 import { Card } from './components/ui/Card';
 import { Button } from './components/ui/Button';
 import { Modal } from './components/ui/Modal';
+import { ChurnTrendChart } from './components/charts/ChurnTrendChart';
+import { TenureScatterPlot } from './components/charts/TenureScatterPlot';
 
 function AppContent() {
   const { user, login, isLoading: authLoading } = useAuth();
@@ -50,7 +46,6 @@ function AppContent() {
   });
   const [isLoading, setIsLoading] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
-  
   const [historyFilters, setHistoryFilters] = useState<HistoryFilters>({
     sortBy: 'timestamp',
     sortOrder: 'desc',
@@ -62,7 +57,6 @@ function AppContent() {
     document.documentElement.classList.toggle('dark', isDark);
   }, [isDark]);
 
-  // Load dashboard stats on user login
   useEffect(() => {
     if (user) {
       loadDashboardStats();
@@ -76,8 +70,7 @@ function AppContent() {
       if (response.success && response.data) {
         setDashboardStats(response.data);
       }
-    } catch (error) {
-      console.error('Failed to load dashboard stats:', error);
+    } catch {
       toast.error('Failed to load dashboard statistics');
     }
   };
@@ -88,8 +81,7 @@ function AppContent() {
       if (response.success && response.data) {
         setPredictionHistory(response.data.predictions);
       }
-    } catch (error) {
-      console.error('Failed to load history:', error);
+    } catch {
       toast.error('Failed to load prediction history');
     }
   };
@@ -100,19 +92,15 @@ function AppContent() {
       const response = await apiService.predict(customerData);
       if (response.success && response.data) {
         setCurrentPrediction(response.data);
-        toast.success('Prediction completed successfully!');
-        
-        // Refresh dashboard stats and history
+        toast.success('Prediction completed!');
         await loadDashboardStats();
         await loadHistory();
-        
         setActiveTab('predict');
       } else {
         throw new Error(response.error || 'Prediction failed');
       }
-    } catch (error) {
-      console.error('Prediction error:', error);
-      toast.error('Failed to make prediction. Please try again.');
+    } catch {
+      toast.error('Prediction failed. Try again.');
     } finally {
       setIsLoading(false);
     }
@@ -126,13 +114,10 @@ function AppContent() {
         setPredictionHistory([]);
         await loadDashboardStats();
         setShowClearConfirm(false);
-        toast.success('History cleared successfully');
-      } else {
-        throw new Error(response.error || 'Failed to clear history');
+        toast.success('History cleared!');
       }
-    } catch (error) {
-      console.error('Clear history error:', error);
-      toast.error('Failed to clear history. Please try again.');
+    } catch {
+      toast.error('Failed to clear history');
     } finally {
       setIsLoading(false);
     }
@@ -145,8 +130,7 @@ function AppContent() {
       if (response.success && response.data) {
         setPredictionHistory(response.data.predictions);
       }
-    } catch (error) {
-      console.error('Failed to load filtered history:', error);
+    } catch {
       toast.error('Failed to load filtered history');
     }
   };
@@ -172,41 +156,17 @@ function AppContent() {
         return (
           <div className="space-y-8">
             <MetricsHeader stats={dashboardStats} />
-            
+
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              <StatsCard
-                title="Total Predictions"
-                value={dashboardStats.totalPredictions}
-                icon={Users}
-                color="blue"
-              />
-              <StatsCard
-                title="Churn Rate"
-                value={dashboardStats.churnRate}
-                icon={TrendingUp}
-                color="red"
-                format="percentage"
-              />
-              <StatsCard
-                title="Avg Probability"
-                value={dashboardStats.avgProbability}
-                icon={Activity}
-                color="purple"
-                format="percentage"
-              />
-              <StatsCard
-                title="High Risk Customers"
-                value={dashboardStats.highRiskCustomers}
-                icon={AlertTriangle}
-                color="yellow"
-              />
+              <StatsCard title="Total Predictions" value={dashboardStats.totalPredictions} icon={Users} color="blue" />
+              <StatsCard title="Churn Rate" value={dashboardStats.churnRate} icon={TrendingUp} color="red" format="percentage" />
+              <StatsCard title="Avg Probability" value={dashboardStats.avgProbability * 100} icon={Activity} color="purple" format="percentage" />
+              <StatsCard title="High Risk Customers" value={dashboardStats.highRiskCustomers} icon={AlertTriangle} color="yellow" />
             </div>
-            
+
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <Card>
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
-                  Recent Predictions
-                </h3>
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Recent Predictions</h3>
                 <div className="space-y-3">
                   {predictionHistory.slice(0, 5).map((prediction) => (
                     <div key={prediction.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
@@ -232,40 +192,38 @@ function AppContent() {
                   )}
                 </div>
               </Card>
-              
+
               <Card>
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
-                  Quick Actions
-                </h3>
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Quick Actions</h3>
                 <div className="space-y-3">
-                  <Button 
-                    onClick={() => setActiveTab('predict')} 
-                    className="w-full justify-start"
-                    variant="secondary"
-                  >
+                  <Button onClick={() => setActiveTab('predict')} className="w-full justify-start" variant="secondary">
                     <TrendingUp className="w-4 h-4 mr-2" />
                     New Prediction
                   </Button>
-                  <Button 
-                    onClick={() => setActiveTab('history')} 
-                    className="w-full justify-start"
-                    variant="secondary"
-                  >
+                  <Button onClick={() => setActiveTab('history')} className="w-full justify-start" variant="secondary">
                     <Activity className="w-4 h-4 mr-2" />
                     View History
                   </Button>
-                  {user.role === 'admin' && (
-                    <Button 
-                      onClick={() => setActiveTab('admin')} 
-                      className="w-full justify-start"
-                      variant="secondary"
-                    >
+                  {user && user.role === 'admin' && (
+                    <Button onClick={() => setActiveTab('admin')} className="w-full justify-start" variant="secondary">
                       <Shield className="w-4 h-4 mr-2" />
                       Admin Panel
                     </Button>
                   )}
                 </div>
               </Card>
+            </div>
+
+            {/* 📈 New Graphs */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <ChurnTrendChart
+                data={predictionHistory.map((p) => ({
+                  date: new Date(p.timestamp).toLocaleDateString(),
+                  churnRate: p.prediction === 'Churn' ? 1 : 0,
+                  predictions: 1
+                }))}
+              />
+              <TenureScatterPlot predictions={predictionHistory} />
             </div>
           </div>
         );
@@ -285,44 +243,24 @@ function AppContent() {
             total={predictionHistory.length}
             filters={historyFilters}
             onFiltersChange={handleHistoryFiltersChange}
+            onClear={() => setShowClearConfirm(true)}
             isLoading={isLoading}
           />
         );
+
 
       case 'admin':
         return (
           <div className="space-y-6">
             <Card>
-              <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-6">
-                Admin Panel
-              </h2>
-              
+              <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-6">Admin Panel</h2>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                <StatsCard
-                  title="System Health"
-                  value="OK"
-                  icon={Activity}
-                  color="green"
-                />
-                <StatsCard
-                  title="API Calls Today"
-                  value={dashboardStats.totalPredictions}
-                  icon={TrendingUp}
-                  color="blue"
-                />
-                <StatsCard
-                  title="Error Rate"
-                  value={0.2}
-                  icon={AlertTriangle}
-                  color="yellow"
-                  format="percentage"
-                />
+                <StatsCard title="System Health" value="OK" icon={Activity} color="green" />
+                <StatsCard title="API Calls Today" value={dashboardStats.totalPredictions} icon={TrendingUp} color="blue" />
+                <StatsCard title="Error Rate" value={0.2} icon={AlertTriangle} color="yellow" format="percentage" />
               </div>
-              
               <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
-                  Database Management
-                </h3>
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Database Management</h3>
                 <div className="flex space-x-4">
                   <Button
                     variant="danger"
@@ -338,34 +276,6 @@ function AppContent() {
           </div>
         );
 
-      case 'settings':
-        return (
-          <Card>
-            <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-6">
-              Settings
-            </h2>
-            <div className="space-y-6">
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
-                  Model Configuration
-                </h3>
-                <p className="text-gray-600 dark:text-gray-400">
-                  Model settings and configuration options will be available here.
-                </p>
-              </div>
-              
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
-                  Notifications
-                </h3>
-                <p className="text-gray-600 dark:text-gray-400">
-                  Configure notification preferences for high-risk predictions.
-                </p>
-              </div>
-            </div>
-          </Card>
-        );
-
       default:
         return null;
     }
@@ -374,48 +284,28 @@ function AppContent() {
   return (
     <>
       <div className="flex h-screen bg-gray-50 dark:bg-gray-900">
-        <Sidebar
-          activeTab={activeTab}
-          onTabChange={setActiveTab}
-          isCollapsed={sidebarCollapsed}
-        />
-        
+        <Sidebar activeTab={activeTab} onTabChange={setActiveTab} isCollapsed={sidebarCollapsed} />
         <div className="flex-1 flex flex-col min-w-0">
           <Header onToggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)} />
-          
-          <main className="flex-1 overflow-auto p-6">
-            {renderContent()}
-          </main>
+          <main className="flex-1 overflow-auto p-6">{renderContent()}</main>
         </div>
-
-        <Modal
-          isOpen={showClearConfirm}
-          onClose={() => setShowClearConfirm(false)}
-          title="Confirm Clear History"
-        >
+        <Modal isOpen={showClearConfirm} onClose={() => setShowClearConfirm(false)} title="Confirm Clear History">
           <div className="space-y-4">
             <p className="text-gray-600 dark:text-gray-400">
               Are you sure you want to clear all prediction history? This action cannot be undone.
             </p>
             <div className="flex space-x-3 justify-end">
-              <Button
-                variant="secondary"
-                onClick={() => setShowClearConfirm(false)}
-              >
+              <Button variant="secondary" onClick={() => setShowClearConfirm(false)}>
                 Cancel
               </Button>
-              <Button
-                variant="danger"
-                onClick={handleClearHistory}
-                isLoading={isLoading}
-              >
+              <Button variant="danger" onClick={handleClearHistory} isLoading={isLoading}>
                 Clear History
               </Button>
             </div>
           </div>
         </Modal>
       </div>
-      
+
       <Toaster
         position="top-right"
         toastOptions={{

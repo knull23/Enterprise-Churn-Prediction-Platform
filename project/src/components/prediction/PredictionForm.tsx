@@ -25,7 +25,7 @@ export const PredictionForm: React.FC<PredictionFormProps> = ({
     numReferrals: 2,
     totalCharges: 1500.0,
     contract: 'Month-to-month',
-    paymentMethod: 'Electronic check',
+    paymentMethod: 'Electronic Check',
     onlineBackup: 'No',
     onlineSecurity: 'No',
     techSupport: 'No',
@@ -122,10 +122,10 @@ export const PredictionForm: React.FC<PredictionFormProps> = ({
               handleInputChange('paymentMethod', e.target.value as CustomerData['paymentMethod'])
             }
             options={[
-              { value: 'Electronic check', label: 'Electronic check' },
-              { value: 'Mailed check', label: 'Mailed check' },
-              { value: 'Bank transfer (automatic)', label: 'Bank transfer (automatic)' },
-              { value: 'Credit card (automatic)', label: 'Credit card (automatic)' }
+              { value: 'Electronic Check', label: 'Electronic Check' },
+              { value: 'Mailed Check', label: 'Mailed Check' },
+              { value: 'Bank Transfer', label: 'Bank Transfer' },
+              { value: 'Credit Card', label: 'Credit Card' }
             ]}
           />
 

@@ -4,7 +4,7 @@ import { Input } from '../ui/Input';
 import { Select } from '../ui/Select';
 import { Button } from '../ui/Button';
 import { ChurnPrediction, HistoryFilters } from '../../types';
-import { Search, Filter, Download, Eye } from 'lucide-react';
+import { Search, Filter, Download, Eye, Trash2 } from 'lucide-react';
 import { Modal } from '../ui/Modal';
 import { PredictionResult } from '../prediction/PredictionResult';
 
@@ -14,6 +14,7 @@ interface HistoryTableProps {
   filters: HistoryFilters;
   onFiltersChange: (filters: HistoryFilters) => void;
   isLoading: boolean;
+  onClear: () => void; // ✅ ADDED
 }
 
 const predictionOptions = [
@@ -38,7 +39,8 @@ export const HistoryTable: React.FC<HistoryTableProps> = ({
   total,
   filters,
   onFiltersChange,
-  isLoading
+  isLoading,
+  onClear // ✅ ADDED
 }) => {
   const [selectedPrediction, setSelectedPrediction] = useState<ChurnPrediction | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -47,7 +49,7 @@ export const HistoryTable: React.FC<HistoryTableProps> = ({
     onFiltersChange({
       ...filters,
       [key]: value,
-      page: 1 // Reset to first page when filtering
+      page: 1
     });
   };
 
@@ -81,11 +83,15 @@ export const HistoryTable: React.FC<HistoryTableProps> = ({
           <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-4 lg:mb-0">
             Prediction History ({total} records)
           </h2>
-          
+
           <div className="flex items-center space-x-3">
             <Button variant="secondary" onClick={handleExport}>
               <Download size={16} className="mr-2" />
               Export CSV
+            </Button>
+            <Button variant="danger" onClick={onClear}>
+              <Trash2 size={16} className="mr-2" />
+              Clear History
             </Button>
           </div>
         </div>
@@ -202,7 +208,6 @@ export const HistoryTable: React.FC<HistoryTableProps> = ({
             <p className="text-sm text-gray-700 dark:text-gray-300">
               Showing {((filters.page - 1) * filters.limit) + 1} to {Math.min(filters.page * filters.limit, total)} of {total} results
             </p>
-            
             <div className="flex space-x-2">
               <Button
                 variant="secondary"

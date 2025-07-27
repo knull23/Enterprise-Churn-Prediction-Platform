@@ -347,11 +347,11 @@ def get_dashboard_stats():
                 "churnRate": 0,
                 "avgProbability": 0,
                 "highRiskCustomers": 0,
-                "predictionAccuracy": 0.89,
-                "precision": 0.85,
-                "recall": 0.82,
-                "f1Score": 0.83,
-                "auc": 0.91
+                "predictionAccuracy": 84,
+                "precision": 69,
+                "recall": 72,
+                "f1Score": 71,
+                "auc": 90
             }))
 
         total_predictions = len(predictions)
@@ -365,11 +365,11 @@ def get_dashboard_stats():
             "churnRate": round(churn_rate, 1),
             "avgProbability": round(avg_probability, 3),
             "highRiskCustomers": high_risk_customers,
-            "predictionAccuracy": 0.89,  # Mock values - would come from model evaluation
-            "precision": 0.85,
-            "recall": 0.82,
-            "f1Score": 0.83,
-            "auc": 0.91
+            "predictionAccuracy": 84,  # Mock values - would come from model evaluation
+            "precision": 69,
+            "recall": 72.2,
+            "f1Score": 70.5,
+            "auc": 90
         }
 
         return jsonify(format_response(True, stats))

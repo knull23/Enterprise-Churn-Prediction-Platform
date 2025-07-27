@@ -13,10 +13,10 @@ export interface CustomerData {
   totalCharges: number;
   tenure: number;
   paymentMethod:
-    | 'Electronic check'
-    | 'Mailed check'
-    | 'Bank transfer (automatic)'
-    | 'Credit card (automatic)';
+    | 'Electronic Check'
+    | 'Mailed Check'
+    | 'Bank Transfer'
+    | 'Credit Card';
   onlineBackup: 'Yes' | 'No';
   onlineSecurity: 'Yes' | 'No';
   techSupport: 'Yes' | 'No';

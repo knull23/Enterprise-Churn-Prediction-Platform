@@ -1,5 +1,13 @@
 import React from 'react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Cell } from 'recharts';
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  ResponsiveContainer,
+  Cell
+} from 'recharts';
 import { ShapValue } from '../../types';
 
 interface ShapChartProps {
@@ -7,12 +15,18 @@ interface ShapChartProps {
 }
 
 export const ShapChart: React.FC<ShapChartProps> = ({ shapValues }) => {
-  const data = shapValues.map(shap => ({
-    feature: shap.feature,
-    value: Math.abs(shap.value),
-    originalValue: shap.value,
-    impact: shap.impact
-  }));
+  if (!shapValues || shapValues.length === 0) {
+    return <p className="text-center text-gray-500">No SHAP values available.</p>;
+  }
+
+  const data = shapValues
+    .map((shap) => ({
+      feature: shap.feature,
+      value: Math.abs(shap.value),
+      originalValue: shap.value,
+      impact: shap.impact
+    }))
+    .sort((a, b) => b.value - a.value);
 
   return (
     <div className="h-80">
@@ -24,23 +38,23 @@ export const ShapChart: React.FC<ShapChartProps> = ({ shapValues }) => {
         >
           <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
           <XAxis type="number" />
-          <YAxis 
-            type="category" 
-            dataKey="feature" 
+          <YAxis
+            type="category"
+            dataKey="feature"
             tick={{ fontSize: 12 }}
-            width={90}
+            width={120}
           />
           <Bar dataKey="value" radius={[0, 4, 4, 0]}>
             {data.map((entry, index) => (
-              <Cell 
-                key={`cell-${index}`} 
-                fill={entry.impact === 'positive' ? '#EF4444' : '#10B981'} 
+              <Cell
+                key={`cell-${index}`}
+                fill={entry.impact === 'positive' ? '#EF4444' : '#10B981'}
               />
             ))}
           </Bar>
         </BarChart>
       </ResponsiveContainer>
-      
+
       <div className="flex justify-center mt-4 space-x-6">
         <div className="flex items-center">
           <div className="w-3 h-3 bg-red-500 rounded mr-2"></div>
