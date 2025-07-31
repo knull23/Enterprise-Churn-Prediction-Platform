@@ -12,6 +12,10 @@ from bson import ObjectId
 import logging
 from dotenv import load_dotenv
 from config import config
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from loguru import logger
 
 # Load environment variables
 load_dotenv()
@@ -77,6 +81,46 @@ def load_models():
 
 # Load models on startup
 load_models()
+def send_welcome_email(to_email, name):
+    try:
+        smtp_server = os.getenv("SMTP_SERVER")
+        smtp_port = int(os.getenv("SMTP_PORT", 587))
+        smtp_username = os.getenv("SMTP_USERNAME")
+        smtp_password = os.getenv("SMTP_PASSWORD")
+        from_email = os.getenv("FROM_EMAIL")
+
+        if not all([smtp_server, smtp_port, smtp_username, smtp_password, from_email]):
+            raise ValueError("Missing SMTP configuration in environment variables")
+
+        subject = "Welcome to ChurnPredict!"
+        body = f"""Hi {name},
+
+🎉 Welcome to ChurnPredict — your smart companion for customer retention!
+
+You’ve successfully created your account. Start exploring churn predictions, analytics, and more.
+
+🚀 Let's get started!
+
+- The ChurnPredict Team
+"""
+
+        # Compose the email
+        msg = MIMEMultipart()
+        msg['From'] = from_email
+        msg['To'] = to_email
+        msg['Subject'] = subject
+        msg.attach(MIMEText(body, 'plain'))
+
+        # Send email
+        with smtplib.SMTP(smtp_server, smtp_port) as server:
+            server.starttls()
+            server.login(smtp_username, smtp_password)
+            server.send_message(msg)
+
+        logger.info(f"✅ Welcome email sent to {to_email}")
+
+    except Exception as e:
+        logger.error(f"❌ Failed to send welcome email to {to_email}: {e}")
 
 # Initialize admin user
 def init_admin_user():
@@ -117,6 +161,58 @@ def calculate_shap_values(customer_data):
     ]
 
     return sorted(features, key=lambda x: abs(x['value']), reverse=True)[:6]
+
+
+@app.route('/api/auth/register', methods=['POST'])
+def register():
+    try:
+        data = request.get_json()
+        name = data.get('name')
+        email = data.get('email')
+        password = data.get('password')
+
+        if not name or not email or not password:
+            return jsonify(format_response(False, error="Name, email, and password required")), 400
+
+        if db is None:
+            return jsonify(format_response(False, error="Database connection failed")), 500
+
+        # Check if user already exists
+        if users_collection.find_one({"email": email}):
+            return jsonify(format_response(False, error="Email already registered")), 400
+
+        # Create new user
+        new_user = {
+            "name": name,
+            "email": email,
+            "password": generate_password_hash(password),
+            "role": "user",
+            "created_at": datetime.utcnow()
+        }
+
+        result = users_collection.insert_one(new_user)
+        user_id = result.inserted_id
+
+        # Send welcome email (this should not raise error if it fails)
+        try:
+            send_welcome_email(to_email=email, name=name)
+        except Exception as email_err:
+            logger.warning(f"Welcome email failed to send: {email_err}")
+
+        access_token = create_access_token(identity=str(user_id))
+
+        user_data = {
+            "id": str(user_id),
+            "name": name,
+            "email": email,
+            "role": "user"
+        }
+
+        return jsonify(format_response(True, {"token": access_token, "user": user_data})), 201
+
+    except Exception as e:
+        logger.error(f"Registration error: {e}")
+        return jsonify(format_response(False, error="Internal server error")), 500
 
 # Routes
 @app.route('/api/auth/login', methods=['POST'])

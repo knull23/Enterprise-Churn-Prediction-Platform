@@ -4,6 +4,7 @@ import {
   DashboardStats,
   HistoryFilters,
   LoginCredentials,
+  RegisterCredentials,
   User,
   ApiResponse,
 } from '../types';
@@ -27,7 +28,7 @@ class ApiService {
         ...(options.headers || {}),
       },
       body: options.body,
-      credentials: 'include', // Needed for CORS with cookies/tokens
+      credentials: 'include',
     };
 
     try {
@@ -50,32 +51,7 @@ class ApiService {
     }
   }
 
-  async predict(customerData: CustomerData): Promise<ApiResponse<ChurnPrediction>> {
-    return this.request<ChurnPrediction>('/predict', {
-      method: 'POST',
-      body: JSON.stringify(customerData),
-    });
-  }
-
-  async getHistory(filters: HistoryFilters): Promise<ApiResponse<{ predictions: ChurnPrediction[]; total: number }>> {
-    const params = new URLSearchParams();
-    Object.entries(filters).forEach(([key, value]) => {
-      if (value !== undefined && value !== null) {
-        params.append(key, value.toString());
-      }
-    });
-
-    return this.request<{ predictions: ChurnPrediction[]; total: number }>(`/history?${params.toString()}`);
-  }
-
-  async getDashboardStats(): Promise<ApiResponse<DashboardStats>> {
-    return this.request<DashboardStats>('/dashboard/stats');
-  }
-
-  async clearHistory(): Promise<ApiResponse<void>> {
-    return this.request<void>('/history', { method: 'DELETE' });
-  }
-
+  // 🔐 Login (admin/user)
   async login(credentials: LoginCredentials): Promise<ApiResponse<{ token: string; user: User }>> {
     return this.request<{ token: string; user: User }>('/auth/login', {
       method: 'POST',
@@ -83,6 +59,15 @@ class ApiService {
     });
   }
 
+  // ✨ Register new user
+  async register(credentials: RegisterCredentials): Promise<ApiResponse<{ token: string; user: User }>> {
+    return this.request<{ token: string; user: User }>('/auth/register', {
+      method: 'POST',
+      body: JSON.stringify(credentials),
+    });
+  }
+
+  // 🔍 Verify JWT token and return user info
   async verifyToken(token: string): Promise<User> {
     const response = await this.request<User>('/auth/verify', {
       method: 'GET',
@@ -98,6 +83,37 @@ class ApiService {
     throw new Error('Token verification failed');
   }
 
+  // 🔮 Predict churn
+  async predict(customerData: CustomerData): Promise<ApiResponse<ChurnPrediction>> {
+    return this.request<ChurnPrediction>('/predict', {
+      method: 'POST',
+      body: JSON.stringify(customerData),
+    });
+  }
+
+  // 📊 Get dashboard summary
+  async getDashboardStats(): Promise<ApiResponse<DashboardStats>> {
+    return this.request<DashboardStats>('/dashboard/stats');
+  }
+
+  // 🕓 Get filtered prediction history
+  async getHistory(filters: HistoryFilters): Promise<ApiResponse<{ predictions: ChurnPrediction[]; total: number }>> {
+    const params = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) {
+        params.append(key, value.toString());
+      }
+    });
+
+    return this.request<{ predictions: ChurnPrediction[]; total: number }>(`/history?${params.toString()}`);
+  }
+
+  // 🧹 Clear all history
+  async clearHistory(): Promise<ApiResponse<void>> {
+    return this.request<void>('/history', { method: 'DELETE' });
+  }
+
+  // ❤️ API server health check
   async healthCheck(): Promise<any> {
     try {
       const response = await fetch(`${this.baseUrl}/health`);
@@ -110,3 +126,4 @@ class ApiService {
 }
 
 export const apiService = new ApiService();
+

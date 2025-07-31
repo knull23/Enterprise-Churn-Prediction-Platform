@@ -3,27 +3,43 @@ import { Card } from '../ui/Card';
 import { Input } from '../ui/Input';
 import { Button } from '../ui/Button';
 import { BarChart3 } from 'lucide-react';
-import { LoginCredentials } from '../../types';
+import { LoginCredentials, RegisterCredentials } from '../../types';
 
 interface LoginFormProps {
   onLogin: (credentials: LoginCredentials) => Promise<boolean>;
+  onRegister?: (credentials: RegisterCredentials) => Promise<boolean>;
   isLoading: boolean;
 }
 
-export const LoginForm: React.FC<LoginFormProps> = ({ onLogin, isLoading }) => {
-  const [formData, setFormData] = useState<LoginCredentials>({
-    email: 'admin@churnpredict.com',
-    password: 'admin123'
-  });
+export const LoginForm: React.FC<LoginFormProps> = ({ onLogin, onRegister, isLoading }) => {
+  const [isRegistering, setIsRegistering] = useState(false);
   const [error, setError] = useState('');
+
+  const [formData, setFormData] = useState<RegisterCredentials>({
+    name: '',
+    email: '',
+    password: ''
+  });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    
-    const success = await onLogin(formData);
-    if (!success) {
-      setError('Invalid email or password');
+
+    if (!formData.email || !formData.password || (isRegistering && !formData.name)) {
+      setError('Please fill all required fields');
+      return;
+    }
+
+    try {
+      const success = isRegistering
+        ? await onRegister?.(formData)
+        : await onLogin({ email: formData.email, password: formData.password });
+
+      if (!success) {
+        setError(isRegistering ? 'Registration failed' : 'Invalid email or password');
+      }
+    } catch (err) {
+      setError('Something went wrong');
     }
   };
 
@@ -38,26 +54,36 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLogin, isLoading }) => {
             ChurnPredict
           </h2>
           <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
-            Sign in to your account
+            {isRegistering ? 'Create a new account' : 'Sign in to your account'}
           </p>
         </div>
 
         <Card>
           <form onSubmit={handleSubmit} className="space-y-6">
+            {isRegistering && (
+              <Input
+                label="Name"
+                type="text"
+                value={formData.name}
+                onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
+                required
+              />
+            )}
+
             <Input
               label="Email"
               type="email"
               value={formData.email}
-              onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
+              onChange={(e) => setFormData((prev) => ({ ...prev, email: e.target.value }))}
               required
               autoComplete="email"
             />
-            
+
             <Input
               label="Password"
               type="password"
               value={formData.password}
-              onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))}
+              onChange={(e) => setFormData((prev) => ({ ...prev, password: e.target.value }))}
               required
               autoComplete="current-password"
             />
@@ -74,19 +100,38 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLogin, isLoading }) => {
               className="w-full"
               size="lg"
             >
-              Sign In
+              {isRegistering ? 'Create Account' : 'Sign In'}
             </Button>
           </form>
 
-          <div className="mt-6 p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
-            <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">Demo Credentials:</p>
-            <p className="text-xs text-gray-500 dark:text-gray-400">
-              Email: admin@churnpredict.com<br />
-              Password: admin123
+          <div className="mt-4 text-center">
+            <p className="text-sm text-gray-600 dark:text-gray-400">
+              {isRegistering ? 'Already have an account?' : "Don't have an account?"}{' '}
+              <button
+                type="button"
+                className="text-blue-600 hover:underline dark:text-blue-400"
+                onClick={() => {
+                  setIsRegistering(!isRegistering);
+                  setError('');
+                }}
+              >
+                {isRegistering ? 'Sign In' : 'Create Account'}
+              </button>
             </p>
           </div>
+
+          {!isRegistering && (
+            <div className="mt-6 p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">Demo Credentials:</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                Email: admin@churnpredict.com<br />
+                Password: admin123
+              </p>
+            </div>
+          )}
         </Card>
       </div>
     </div>
   );
 };
+

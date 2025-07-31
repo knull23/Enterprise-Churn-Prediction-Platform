@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
@@ -6,7 +6,7 @@ import { Select } from '../ui/Select';
 import { Bell, Mail, MessageSquare } from 'lucide-react';
 
 interface NotificationSettingsProps {
-  onSave: (settings: any) => void;
+  onSave?: (settings: any) => void; // optional external handler
 }
 
 const thresholdOptions = [
@@ -33,10 +33,23 @@ export const NotificationSettings: React.FC<NotificationSettingsProps> = ({ onSa
     phoneNumber: ''
   });
 
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    const local = localStorage.getItem('notificationSettings');
+    if (local) setSettings(JSON.parse(local));
+  }, []);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSave(settings);
+    localStorage.setItem('notificationSettings', JSON.stringify(settings));
+    setSaved(true);
+    if (onSave) onSave(settings);
+    setTimeout(() => setSaved(false), 3000);
   };
+
+  const isEmailValid = settings.emailAddress === '' || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(settings.emailAddress);
+  const isPhoneValid = settings.phoneNumber === '' || /^\+?[0-9\s\-()]{7,}$/.test(settings.phoneNumber);
 
   return (
     <Card>
@@ -72,13 +85,14 @@ export const NotificationSettings: React.FC<NotificationSettingsProps> = ({ onSa
               checked={settings.emailEnabled}
               onChange={(e) => setSettings(prev => ({ ...prev, emailEnabled: e.target.checked }))}
               className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              aria-label="Enable email notifications"
             />
             <label htmlFor="emailEnabled" className="flex items-center text-sm font-medium text-gray-700 dark:text-gray-300">
               <Mail className="w-4 h-4 mr-2" />
               Email Notifications
             </label>
           </div>
-          
+
           {settings.emailEnabled && (
             <Input
               label="Email Address"
@@ -86,6 +100,7 @@ export const NotificationSettings: React.FC<NotificationSettingsProps> = ({ onSa
               value={settings.emailAddress}
               onChange={(e) => setSettings(prev => ({ ...prev, emailAddress: e.target.value }))}
               placeholder="alerts@yourcompany.com"
+              error={!isEmailValid ? "Invalid email format" : ""}
             />
           )}
         </div>
@@ -98,13 +113,14 @@ export const NotificationSettings: React.FC<NotificationSettingsProps> = ({ onSa
               checked={settings.smsEnabled}
               onChange={(e) => setSettings(prev => ({ ...prev, smsEnabled: e.target.checked }))}
               className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              aria-label="Enable SMS notifications"
             />
             <label htmlFor="smsEnabled" className="flex items-center text-sm font-medium text-gray-700 dark:text-gray-300">
               <MessageSquare className="w-4 h-4 mr-2" />
               SMS Notifications
             </label>
           </div>
-          
+
           {settings.smsEnabled && (
             <Input
               label="Phone Number"
@@ -112,12 +128,16 @@ export const NotificationSettings: React.FC<NotificationSettingsProps> = ({ onSa
               value={settings.phoneNumber}
               onChange={(e) => setSettings(prev => ({ ...prev, phoneNumber: e.target.value }))}
               placeholder="+1 (555) 123-4567"
+              error={!isPhoneValid ? "Invalid phone number" : ""}
             />
           )}
         </div>
 
-        <div className="flex justify-end">
-          <Button type="submit">
+        <div className="flex justify-end items-center space-x-4">
+          {saved && (
+            <p className="text-sm text-green-600 dark:text-green-400">Settings saved!</p>
+          )}
+          <Button type="submit" disabled={!isEmailValid || !isPhoneValid}>
             Save Settings
           </Button>
         </div>

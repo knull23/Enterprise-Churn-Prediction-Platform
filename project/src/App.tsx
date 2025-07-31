@@ -1,4 +1,3 @@
-// 🔁 Imports
 import { useState, useEffect } from 'react';
 import { Toaster, toast } from 'react-hot-toast';
 import { Header } from './components/layout/Header';
@@ -11,26 +10,32 @@ import { PredictionResult } from './components/prediction/PredictionResult';
 import { HistoryTable } from './components/history/HistoryTable';
 import { AuthProvider, useAuth } from './hooks/useAuth';
 import { useDarkMode } from './hooks/useDarkMode';
-import { 
+import { NotificationSettings } from './components/notifications/NotificationSettings';
+
+import {
   Users, TrendingUp, AlertTriangle, Activity,
   Shield, Trash2
 } from 'lucide-react';
-import { 
-  ChurnPrediction, CustomerData, 
-  DashboardStats, HistoryFilters 
+
+import {
+  ChurnPrediction, CustomerData,
+  DashboardStats, HistoryFilters
 } from './types';
+
 import { apiService } from './services/api';
 import { Card } from './components/ui/Card';
 import { Button } from './components/ui/Button';
 import { Modal } from './components/ui/Modal';
+
 import { ChurnTrendChart } from './components/charts/ChurnTrendChart';
 import { TenureScatterPlot } from './components/charts/TenureScatterPlot';
 import { ProbabilityHistogram } from './components/charts/ProbabilityHistogram';
 import { ChurnByContractBarChart } from './components/charts/ChurnByContractBarChart';
 
 function AppContent() {
-  const { user, login, isLoading: authLoading } = useAuth();
+  const { user, login, isLoading: authLoading, register } = useAuth();
   const [isDark] = useDarkMode();
+
   const [activeTab, setActiveTab] = useState('dashboard');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [currentPrediction, setCurrentPrediction] = useState<ChurnPrediction | null>(null);
@@ -149,7 +154,7 @@ function AppContent() {
   }
 
   if (!user) {
-    return <LoginForm onLogin={login} isLoading={isLoading} />;
+    return <LoginForm onLogin={login} onRegister={register} isLoading={isLoading} />;
   }
 
   const renderContent = () => {
@@ -206,6 +211,11 @@ function AppContent() {
                     <Activity className="w-4 h-4 mr-2" />
                     View History
                   </Button>
+                  <Button onClick={() => setActiveTab('settings')} className="w-full justify-start" variant="secondary">
+                    <Shield className="w-4 h-4 mr-2" />
+                    Notification Settings
+                  </Button>
+
                   {user && user.role === 'admin' && (
                     <Button onClick={() => setActiveTab('admin')} className="w-full justify-start" variant="secondary">
                       <Shield className="w-4 h-4 mr-2" />
@@ -216,7 +226,6 @@ function AppContent() {
               </Card>
             </div>
 
-            {/* 📈 New Graphs */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <ChurnTrendChart data={predictionHistory} />
               <TenureScatterPlot predictions={predictionHistory} />
@@ -246,6 +255,12 @@ function AppContent() {
           />
         );
 
+      case 'settings':
+        return (
+          <div className="max-w-3xl mx-auto space-y-6">
+            <NotificationSettings />
+          </div>
+        );
 
       case 'admin':
         return (
@@ -328,3 +343,4 @@ function App() {
 }
 
 export default App;
+

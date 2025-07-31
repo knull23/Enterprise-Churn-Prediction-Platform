@@ -1,8 +1,25 @@
-import { useState, useEffect, createContext, useContext, ReactNode } from 'react';
-import { User, LoginCredentials, AuthContextType } from '../types';
+import {
+  useState,
+  useEffect,
+  createContext,
+  useContext,
+  ReactNode,
+} from 'react';
+import {
+  User,
+  LoginCredentials,
+  RegisterCredentials,
+  AuthContextType,
+} from '../types';
 import { apiService } from '../services/api';
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+// Extend AuthContextType with setUser and register
+interface ExtendedAuthContextType extends AuthContextType {
+  setUser: (user: User | null) => void;
+  register: (credentials: RegisterCredentials) => Promise<boolean>;
+}
+
+const AuthContext = createContext<ExtendedAuthContextType | undefined>(undefined);
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
@@ -12,16 +29,16 @@ export const useAuth = () => {
   return context;
 };
 
-export const useAuthProvider = (): AuthContextType => {
+export const useAuthProvider = (): ExtendedAuthContextType => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     const token = localStorage.getItem('authToken');
     if (token) {
-      // Verify token and get user info
-      apiService.verifyToken(token)
-        .then(userData => {
+      apiService
+        .verifyToken(token)
+        .then((userData) => {
           setUser(userData);
         })
         .catch(() => {
@@ -50,6 +67,21 @@ export const useAuthProvider = (): AuthContextType => {
     }
   };
 
+  const register = async (credentials: RegisterCredentials): Promise<boolean> => {
+    try {
+      const response = await apiService.register(credentials);
+      if (response.success && response.data) {
+        localStorage.setItem('authToken', response.data.token);
+        setUser(response.data.user);
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('Registration failed:', error);
+      return false;
+    }
+  };
+
   const logout = () => {
     localStorage.removeItem('authToken');
     setUser(null);
@@ -58,8 +90,10 @@ export const useAuthProvider = (): AuthContextType => {
   return {
     user,
     login,
+    register,
     logout,
-    isLoading
+    isLoading,
+    setUser,
   };
 };
 
