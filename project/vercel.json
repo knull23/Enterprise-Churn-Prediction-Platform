@@ -8,17 +8,21 @@
   ],
   "routes": [
     {
+      "src": "/api/(.*)",
+      "dest": "backend/app.py"
+    },
+    {
       "src": "/(.*)",
       "dest": "/dist/$1"
     }
   ],
   "env": {
-    "VITE_API_URL": "@vite_api_url",
+    "VITE_API_URL": "https://your-vercel-domain.vercel.app/api",
     "VITE_ENVIRONMENT": "production"
   },
   "build": {
     "env": {
-      "VITE_API_URL": "@vite_api_url",
+      "VITE_API_URL": "https://your-vercel-domain.vercel.app/api",
       "VITE_ENVIRONMENT": "production"
     }
   }
