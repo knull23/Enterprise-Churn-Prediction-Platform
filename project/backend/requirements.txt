@@ -10,3 +10,4 @@ python-dotenv==1.0.0
 Werkzeug==2.3.7
 gunicorn==21.2.0
 dnspython==2.4.2
+
