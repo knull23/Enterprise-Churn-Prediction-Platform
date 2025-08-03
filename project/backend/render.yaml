@@ -1,9 +1,9 @@
 services:
   - type: web
-    name: churn-backend
+    name: Enterprise-Churn-Prediction-Platform
     env: python
     plan: free
-    buildCommand: pip install -r requirements.txt
+    buildCommand: pip install --upgrade pip setuptools wheel && pip install -r requirements.txt
     startCommand: gunicorn app:app
     autoDeploy: true
     envVars:
@@ -41,4 +41,5 @@ services:
         value: 24h
       - key: BCRYPT_ROUNDS
         value: "12"
+
 
