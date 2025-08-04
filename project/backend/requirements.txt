@@ -1,6 +1,6 @@
 # Core tools
 pip>=23.1
-setuptools==65.5.0
+setuptools>=65.5.0
 wheel
 
 # Flask + WSGI
