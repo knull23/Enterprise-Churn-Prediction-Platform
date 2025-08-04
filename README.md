@@ -2,6 +2,19 @@
 
 A modern, full-stack web application for predicting customer churn using machine learning with real-time analytics, MongoDB integration, and enterprise-level features.
 
+
+
+<img width="1235" height="860" alt="image" src="https://github.com/user-attachments/assets/5e482d39-4122-43e5-a9e8-af5b36bf0de8" />
+<img width="1897" height="913" alt="image" src="https://github.com/user-attachments/assets/19c25c03-f647-43e2-aa10-1b7943e6fb5b" />
+<img width="1890" height="911" alt="image" src="https://github.com/user-attachments/assets/332e0a0a-ed94-4c2c-acdf-a4f7ba816a65" />
+<img width="1608" height="908" alt="image" src="https://github.com/user-attachments/assets/b35a5855-51b3-4e22-b373-57a8f819b2c4" />
+<img width="1917" height="907" alt="image" src="https://github.com/user-attachments/assets/8e66a4a6-b6ad-4170-a571-88188f12eb7f" />
+<img width="1917" height="911" alt="image" src="https://github.com/user-attachments/assets/8938bbdc-4f67-4f19-b351-242117a3a34a" />
+<img width="1918" height="915" alt="image" src="https://github.com/user-attachments/assets/d0c972a9-a52e-4537-8dcd-2465d04e6a46" />
+
+
+
+
 ## 🚀 Features
 
 ### 🎯 Core Functionality
