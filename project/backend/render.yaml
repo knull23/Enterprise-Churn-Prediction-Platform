@@ -6,7 +6,7 @@ services:
     rootDir: project/backend
     buildCommand: |
       pip install --upgrade pip setuptools wheel
-      PIP_NO_BUILD_ISOLATION=1 pip install -r requirements.txt
+      PIP_NO_BUILD_ISOLATION=1 pip install --prefer-binary -r requirements.txt
     startCommand: gunicorn app:app --bind 0.0.0.0:$PORT
     autoDeploy: true
     envVars:
