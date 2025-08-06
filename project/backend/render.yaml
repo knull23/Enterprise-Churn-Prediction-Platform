@@ -22,26 +22,10 @@ services:
         value: models/encoder.pkl
       - key: SCALER_PATH
         value: models/scaler.pkl
-      - key: SECRET_KEY
-        value: your-secret-key-here
-      - key: MONGO_URI
-        value: your-mongo-uri-here
       - key: SMTP_SERVER
         value: smtp.gmail.com
       - key: SMTP_PORT
         value: "587"
-      - key: SMTP_USERNAME
-        value: your-email@gmail.com
-      - key: SMTP_PASSWORD
-        value: your-app-password
-      - key: FROM_EMAIL
-        value: your-email@gmail.com
-      - key: TWILIO_ACCOUNT_SID
-        value: your-twilio-sid
-      - key: TWILIO_AUTH_TOKEN
-        value: your-twilio-token
-      - key: TWILIO_PHONE_NUMBER
-        value: your-twilio-phone
       - key: JWT_EXPIRATION
         value: 24h
       - key: BCRYPT_ROUNDS
