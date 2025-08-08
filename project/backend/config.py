@@ -1,24 +1,26 @@
 import os
 from datetime import timedelta
+from dotenv import load_dotenv
+load_dotenv()
 
 class Config:
-    SECRET_KEY = os.environ.get('SECRET_KEY') or 'dev-secret-key'
-    MONGO_URI = os.environ.get('MONGO_URI') or 'mongodb://localhost:27017/churn_prediction'
+    SECRET_KEY = os.getenv('SECRET_KEY') or 'dev-secret-key'
+    MONGO_URI = os.getenv('MONGO_URI') or 'mongodb://localhost:27017/churn_prediction'
     JWT_ACCESS_TOKEN_EXPIRES = timedelta(hours=24)
-    MODEL_PATH = os.environ.get('MODEL_PATH') or './models/xgboost_model.pkl'
-    ENCODER_PATH = os.environ.get('ENCODER_PATH') or './models/encoder.pkl'
-    SCALER_PATH = os.environ.get('SCALER_PATH') or './models/scaler.pkl'
+    MODEL_PATH = os.getenv('MODEL_PATH') or './models/xgboost_model.pkl'
+    ENCODER_PATH = os.getenv('ENCODER_PATH') or './models/encoder.pkl'
+    SCALER_PATH = os.getenv('SCALER_PATH') or './models/scaler.pkl'
     
     # Email settings
-    SMTP_HOST = os.environ.get('SMTP_HOST')
-    SMTP_PORT = int(os.environ.get('SMTP_PORT', 587))
-    SMTP_USER = os.environ.get('SMTP_USER')
-    SMTP_PASS = os.environ.get('SMTP_PASS')
+    SMTP_HOST = os.getenv('SMTP_SERVER')
+    SMTP_PORT = int(os.getenv('SMTP_PORT', 587))
+    SMTP_USER = os.getenv('SMTP_USERNAME')
+    SMTP_PASS = os.getenv('SMTP_PASSWORD')
     
     # Twilio settings
-    TWILIO_ACCOUNT_SID = os.environ.get('TWILIO_ACCOUNT_SID')
-    TWILIO_AUTH_TOKEN = os.environ.get('TWILIO_AUTH_TOKEN')
-    TWILIO_PHONE_NUMBER = os.environ.get('TWILIO_PHONE_NUMBER')
+    TWILIO_ACCOUNT_SID = os.getenv('TWILIO_ACCOUNT_SID')
+    TWILIO_AUTH_TOKEN = os.getenv('TWILIO_AUTH_TOKEN')
+    TWILIO_PHONE_NUMBER = os.getenv('TWILIO_PHONE_NUMBER')
 
 class DevelopmentConfig(Config):
     DEBUG = True
