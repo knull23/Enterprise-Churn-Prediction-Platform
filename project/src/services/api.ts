@@ -10,7 +10,9 @@ import {
 } from '../types';
 
 class ApiService {
-  private baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+  // ✅ Use environment variable in production, fallback to relative path for same-domain hosting
+  private baseUrl =
+    import.meta.env.VITE_API_URL?.replace(/\/$/, '') || '/api';
 
   private async request<T>(endpoint: string, options: RequestInit = {}): Promise<ApiResponse<T>> {
     const url = `${this.baseUrl}${endpoint}`;
@@ -126,4 +128,5 @@ class ApiService {
 }
 
 export const apiService = new ApiService();
+
 
