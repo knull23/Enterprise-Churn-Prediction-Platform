@@ -55,29 +55,47 @@ encoder = None
 scaler = None
 
 def load_models():
+    """
+    Load ML model, encoder, and scaler from disk.
+    Uses environment variables for paths if available,
+    otherwise falls back to default paths in MODELS_DIR.
+    """
     global model, encoder, scaler
     try:
         model_path = os.getenv('MODEL_PATH', os.path.join(MODELS_DIR, 'final_xgboost_top10_model.pkl'))
         encoder_path = os.getenv('ENCODER_PATH', os.path.join(MODELS_DIR, 'encoder.pkl'))
         scaler_path = os.getenv('SCALER_PATH', os.path.join(MODELS_DIR, 'scaler.pkl'))
 
+        # Load model
+        if not os.path.exists(model_path):
+            raise FileNotFoundError(f"Model file not found at {model_path}")
         with open(model_path, 'rb') as f:
             model = pickle.load(f)
+        logger.info(f"Model loaded successfully from {model_path}")
 
+        # Load encoder
+        if not os.path.exists(encoder_path):
+            raise FileNotFoundError(f"Encoder file not found at {encoder_path}")
         with open(encoder_path, 'rb') as f:
             encoder = pickle.load(f)
+        logger.info(f"Encoder loaded successfully from {encoder_path}")
 
-        try:
+        # Load scaler (optional)
+        if os.path.exists(scaler_path):
             with open(scaler_path, 'rb') as f:
                 scaler = pickle.load(f)
-        except FileNotFoundError:
-            logger.warning("Scaler not found, proceeding without scaling")
+            logger.info(f"Scaler loaded successfully from {scaler_path}")
+        else:
             scaler = None
+            logger.warning("Scaler file not found, proceeding without scaling.")
 
-        logger.info("ML models loaded successfully")
+    except FileNotFoundError as fnf_error:
+        logger.error(fnf_error)
+        raise
     except Exception as e:
-        logger.error(f"Failed to load ML models: {e}")
-        raise e
+        logger.error(f"Unexpected error loading ML models: {e}")
+        raise
+
 
 # Load models on startup
 load_models()
