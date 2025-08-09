@@ -4,15 +4,11 @@ services:
     env: python
     plan: free
     rootDir: project/backend
-
     buildCommand: |
-      echo "Checking Python version..."
-      python3 --version
+      pip install --upgrade pip
       pip install --only-binary=:all: -r requirements.txt
-
     startCommand: gunicorn app:app --bind 0.0.0.0:$PORT
     autoDeploy: true
-
     envVars:
       - key: PYTHON_VERSION
         value: 3.10.8
@@ -34,4 +30,3 @@ services:
         value: 24h
       - key: BCRYPT_ROUNDS
         value: "12"
-

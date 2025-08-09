@@ -56,15 +56,17 @@ scaler = None
 
 def load_models():
     """
-    Load ML model, encoder, and scaler from disk.
-    Uses environment variables for paths if available,
-    otherwise falls back to default paths in MODELS_DIR.
+    Load ML model, encoder, and optional scaler from disk.
+    Paths are resolved relative to the current file location (BASE_DIR),
+    ensuring compatibility in both local and Render deployments.
     """
     global model, encoder, scaler
+
     try:
-        model_path = os.getenv('MODEL_PATH', os.path.join(MODELS_DIR, 'final_xgboost_top10_model.pkl'))
-        encoder_path = os.getenv('ENCODER_PATH', os.path.join(MODELS_DIR, 'encoder.pkl'))
-        scaler_path = os.getenv('SCALER_PATH', os.path.join(MODELS_DIR, 'scaler.pkl'))
+        base_dir = os.path.dirname(os.path.abspath(__file__))  # project/backend
+        model_path = os.path.join(base_dir, os.getenv('MODEL_PATH', 'models/final_xgboost_top10_model.pkl'))
+        encoder_path = os.path.join(base_dir, os.getenv('ENCODER_PATH', 'models/encoder.pkl'))
+        scaler_path = os.path.join(base_dir, os.getenv('SCALER_PATH', 'models/scaler.pkl'))
 
         # Load model
         if not os.path.exists(model_path):
@@ -95,6 +97,7 @@ def load_models():
     except Exception as e:
         logger.error(f"Unexpected error loading ML models: {e}")
         raise
+
 
 
 # Load models on startup
