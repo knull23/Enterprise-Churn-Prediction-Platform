@@ -29,7 +29,14 @@ app.config.from_object(config['default'])
 # Initialize extensions
 from flask_cors import CORS
 
-CORS(app, resources={r"/api/*": {"origins": "https://enterprise-churn-frontend.vercel.app"}}, supports_credentials=True)
+CORS(
+    app,
+    resources={r"/api/*": {"origins": [
+        "http://localhost:5175",  # local dev
+        "https://your-vercel-domain.vercel.app"  # production frontend
+    ]}},
+    supports_credentials=True
+)
 
 jwt = JWTManager(app)
 
