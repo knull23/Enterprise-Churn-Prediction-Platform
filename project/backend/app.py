@@ -27,7 +27,9 @@ app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=24)
 app.config.from_object(config['default'])
 
 # Initialize extensions
-CORS(app, resources={r"/api/*": {"origins": "http://localhost:5175"}}, supports_credentials=True)
+from flask_cors import CORS
+
+CORS(app, resources={r"/api/*": {"origins": "https://enterprise-churn-frontend.vercel.app"}}, supports_credentials=True)
 
 jwt = JWTManager(app)
 
