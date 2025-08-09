@@ -9,7 +9,7 @@
   "routes": [
     {
       "src": "/api/(.*)",
-      "dest": "backend/app.py"
+      "dest": "https://enterprise-churn-prediction-platform.onrender.com/api/$1"
     },
     {
       "src": "/(.*)",
@@ -17,12 +17,12 @@
     }
   ],
   "env": {
-    "VITE_API_URL": "https://your-vercel-domain.vercel.app/api",
+    "VITE_API_URL": "https://enterprise-churn-prediction-platform.onrender.com/api",
     "VITE_ENVIRONMENT": "production"
   },
   "build": {
     "env": {
-      "VITE_API_URL": "https://your-vercel-domain.vercel.app/api",
+      "VITE_API_URL": "https://enterprise-churn-prediction-platform.onrender.com/api",
       "VITE_ENVIRONMENT": "production"
     }
   }
