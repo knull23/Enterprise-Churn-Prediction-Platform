@@ -13,13 +13,14 @@ import {
 } from '../types';
 import { apiService } from '../services/api';
 
-// Extend AuthContextType with setUser and register
 interface ExtendedAuthContextType extends AuthContextType {
   setUser: (user: User | null) => void;
   register: (credentials: RegisterCredentials) => Promise<boolean>;
 }
 
-const AuthContext = createContext<ExtendedAuthContextType | undefined>(undefined);
+const AuthContext = createContext<ExtendedAuthContextType | undefined>(
+  undefined
+);
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
@@ -38,15 +39,12 @@ export const useAuthProvider = (): ExtendedAuthContextType => {
     if (token) {
       apiService
         .verifyToken(token)
-        .then((userData) => {
-          setUser(userData);
-        })
+        .then((userData) => setUser(userData))
         .catch(() => {
           localStorage.removeItem('authToken');
+          setUser(null);
         })
-        .finally(() => {
-          setIsLoading(false);
-        });
+        .finally(() => setIsLoading(false));
     } else {
       setIsLoading(false);
     }
@@ -67,7 +65,9 @@ export const useAuthProvider = (): ExtendedAuthContextType => {
     }
   };
 
-  const register = async (credentials: RegisterCredentials): Promise<boolean> => {
+  const register = async (
+    credentials: RegisterCredentials
+  ): Promise<boolean> => {
     try {
       const response = await apiService.register(credentials);
       if (response.success && response.data) {
@@ -103,5 +103,7 @@ interface AuthProviderProps {
 
 export const AuthProvider = ({ children }: AuthProviderProps) => {
   const auth = useAuthProvider();
-  return <AuthContext.Provider value={auth}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={auth}>{children}</AuthContext.Provider>
+  );
 };
