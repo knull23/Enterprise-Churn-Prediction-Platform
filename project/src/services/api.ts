@@ -43,8 +43,7 @@ class ApiService {
     const defaultHeaders: HeadersInit = {
       'Content-Type': 'application/json',
       'Accept': 'application/json',
-      // Fix: Add origin header for CORS
-      'Origin': window.location.origin,
+      // Fix: Remove explicit Origin header - let browser handle it
       ...(this.token ? { Authorization: `Bearer ${this.token}` } : {}),
     };
 
@@ -58,20 +57,32 @@ class ApiService {
       // Fix: Proper credentials and mode for CORS
       credentials: 'include',
       mode: 'cors',
-      // Fix: Add cache control
-      cache: 'no-cache',
     };
 
     try {
       console.log(`Making ${config.method} request to:`, url);
+      console.log('Request headers:', config.headers);
+      console.log('Request body:', options.body);
       
       const response = await fetch(url, config);
       
       console.log('Response status:', response.status);
       console.log('Response headers:', Object.fromEntries(response.headers.entries()));
 
+      const contentType = response.headers.get('content-type');
+      let data: any = {};
+      
+      if (contentType && contentType.includes('application/json')) {
+        data = await response.json();
+        console.log('Response data:', data);
+      } else {
+        console.log('Non-JSON response received');
+      }
+
       // Fix: Better error handling for different status codes
       if (!response.ok) {
+        const errorMessage = data?.error || data?.message || `Request failed: ${response.status}`;
+        
         if (response.status === 401) {
           // Unauthorized - clear token and throw specific error
           this.clearToken();
@@ -79,22 +90,20 @@ class ApiService {
         } else if (response.status === 404) {
           throw new Error('API endpoint not found');
         } else if (response.status >= 500) {
-          throw new Error(`Server error: ${response.status}`);
+          throw new Error(`Server error: ${response.status} - ${errorMessage}`);
+        } else {
+          throw new Error(errorMessage);
         }
       }
 
-      const contentType = response.headers.get('content-type');
-      let data: any = {};
-      
-      if (contentType && contentType.includes('application/json')) {
-        data = await response.json();
-      } else if (response.status === 200) {
-        // For successful non-JSON responses
-        data = { success: true, message: 'Request completed successfully' };
-      }
-
-      if (!response.ok) {
-        throw new Error(data?.error || data?.message || `Request failed: ${response.status}`);
+      // Handle successful responses
+      if (response.status === 200 || response.status === 201) {
+        // If we got JSON data, return it
+        if (data && typeof data === 'object') {
+          return data;
+        }
+        // Otherwise return a success response
+        return { success: true, message: 'Request completed successfully' } as ApiResponse<T>;
       }
 
       return data;
@@ -103,7 +112,7 @@ class ApiService {
       
       // Fix: Handle specific error types
       if (error instanceof TypeError && error.message === 'Failed to fetch') {
-        throw new Error('Network error. Please check your connection and try again.');
+        throw new Error('Network error. Unable to connect to server. Please check your connection and try again.');
       }
       
       if (error instanceof Error && error.message.includes('CORS')) {
@@ -118,14 +127,19 @@ class ApiService {
     credentials: LoginCredentials
   ): Promise<ApiResponse<{ token: string; user: User }>> {
     try {
+      console.log('Attempting login with:', { email: credentials.email });
+      
       const response = await this.request<{ token: string; user: User }>('/auth/login', {
         method: 'POST',
         body: JSON.stringify(credentials),
       });
 
+      console.log('Login response:', response);
+
       // Fix: Store token if login successful
       if (response.success && response.data?.token) {
         this.setToken(response.data.token);
+        console.log('Token stored successfully');
       }
 
       return response;
@@ -139,14 +153,22 @@ class ApiService {
     credentials: RegisterCredentials
   ): Promise<ApiResponse<{ token: string; user: User }>> {
     try {
+      console.log('Attempting registration with:', { 
+        name: credentials.name, 
+        email: credentials.email 
+      });
+      
       const response = await this.request<{ token: string; user: User }>('/auth/register', {
         method: 'POST',
         body: JSON.stringify(credentials),
       });
 
+      console.log('Registration response:', response);
+
       // Fix: Store token if registration successful
       if (response.success && response.data?.token) {
         this.setToken(response.data.token);
+        console.log('Token stored successfully after registration');
       }
 
       return response;
@@ -164,13 +186,16 @@ class ApiService {
     }
 
     try {
+      console.log('Verifying token...');
+      
       const response = await this.request<User>('/auth/verify', {
         method: 'GET',
         headers: {
           Authorization: `Bearer ${tokenToVerify}`,
-          'Content-Type': 'application/json',
         },
       });
+
+      console.log('Token verification response:', response);
 
       if (response.success && response.data) {
         return response.data;
@@ -187,6 +212,8 @@ class ApiService {
   async predict(
     customerData: CustomerData
   ): Promise<ApiResponse<ChurnPrediction>> {
+    console.log('Making prediction request with data:', customerData);
+    
     return this.request<ChurnPrediction>('/predict', {
       method: 'POST',
       body: JSON.stringify(customerData),
@@ -199,21 +226,21 @@ class ApiService {
 
   async getHistory(
     filters: HistoryFilters
-  ): Promise<ApiResponse<{ predictions: ChurnPrediction[]; total: number }>> {
+  ): Promise<ApiResponse<{ predictions: ChurnPrediction[]; total: number; page: number; totalPages: number }>> {
     const params = new URLSearchParams();
     Object.entries(filters).forEach(([key, value]) => {
-      if (value !== undefined && value !== null) {
+      if (value !== undefined && value !== null && value !== '') {
         params.append(key, value.toString());
       }
     });
 
-    return this.request<{ predictions: ChurnPrediction[]; total: number }>(
+    return this.request<{ predictions: ChurnPrediction[]; total: number; page: number; totalPages: number }>(
       `/history?${params.toString()}`
     );
   }
 
-  async clearHistory(): Promise<ApiResponse<void>> {
-    return this.request<void>('/history', { method: 'DELETE' });
+  async clearHistory(): Promise<ApiResponse<{ deletedCount: number }>> {
+    return this.request<{ deletedCount: number }>('/history', { method: 'DELETE' });
   }
 
   async healthCheck(): Promise<any> {
@@ -229,6 +256,10 @@ class ApiService {
         },
       });
       
+      if (!response.ok) {
+        throw new Error(`Health check failed: ${response.status}`);
+      }
+      
       const data = await response.json();
       console.log('Health check response:', data);
       return data;
@@ -242,13 +273,43 @@ class ApiService {
     }
   }
 
+  // CORS test endpoint
+  async testCors(): Promise<any> {
+    try {
+      console.log('Testing CORS...');
+      const response = await fetch(`${this.baseUrl}/test-cors`, {
+        method: 'POST',
+        mode: 'cors',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: JSON.stringify({ test: 'data' }),
+      });
+      
+      const data = await response.json();
+      console.log('CORS test response:', data);
+      return data;
+    } catch (error: any) {
+      console.error('CORS test failed:', error);
+      return { 
+        status: 'error', 
+        error: error.message,
+        baseUrl: this.baseUrl 
+      };
+    }
+  }
+
   // Token management methods
   setToken(token: string): void {
+    console.log('Setting auth token');
     this.token = token;
     localStorage.setItem('authToken', token);
   }
 
   clearToken(): void {
+    console.log('Clearing auth token');
     this.token = null;
     localStorage.removeItem('authToken');
   }
@@ -258,7 +319,9 @@ class ApiService {
   }
 
   isAuthenticated(): boolean {
-    return !!this.getToken();
+    const token = this.getToken();
+    console.log('Checking authentication status:', !!token);
+    return !!token;
   }
 
   // Get current API URL for debugging
@@ -268,6 +331,5 @@ class ApiService {
 }
 
 export const apiService = new ApiService();
-
 
 

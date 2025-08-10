@@ -31,13 +31,13 @@ CORS(
     app,
     resources={r"/api/*": {"origins": [
         "http://localhost:5175",
-        "http://localhost:5174",           # Local development (updated port)
-        "http://localhost:5173",           # Alternative local port
-        "http://localhost:3000",           # React default
-        "http://127.0.0.1:5174",          # Alternative localhost
-        "https://*.vercel.app",            # All Vercel deployments
-        "https://enterprise-churn-prediction-platform.vercel.app",  # Your specific domain
-        os.getenv('FRONTEND_URL', '*'),    # Environment variable override
+        "http://localhost:5174",
+        "http://localhost:5173",
+        "http://localhost:3000",
+        "http://127.0.0.1:5174",
+        "https://enterprise-churn-prediction-platform.vercel.app",
+        # Add specific Vercel preview URLs as needed instead of wildcard
+        # "https://your-app-git-branch.vercel.app",  # Add specific preview URLs
     ]}},
     supports_credentials=True,
     methods=['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
@@ -46,70 +46,13 @@ CORS(
         'Authorization', 
         'Origin', 
         'Accept',
-        'X-Requested-With',
-        'Access-Control-Request-Method',
-        'Access-Control-Request-Headers'
+        'X-Requested-With'
+        # Remove these as they're automatically handled:
+        # 'Access-Control-Request-Method',
+        # 'Access-Control-Request-Headers'
     ]
 )
 
-@app.before_request
-def handle_preflight():
-    if request.method == "OPTIONS":
-        response = jsonify()
-        origin = request.headers.get('Origin')
-        
-        # Allow specific origins or fallback to environment variable
-        allowed_origins = [
-            "http://localhost:5175",
-            "http://localhost:5174",
-            "http://localhost:5173", 
-            "http://localhost:3000",
-            "http://127.0.0.1:5174",
-            os.getenv('FRONTEND_URL', '')
-        ]
-        
-        # Check if origin ends with .vercel.app (for dynamic Vercel URLs)
-        if origin and (origin in allowed_origins or origin.endswith('.vercel.app')):
-            response.headers.add("Access-Control-Allow-Origin", origin)
-        elif not origin:  # For direct API calls
-            response.headers.add("Access-Control-Allow-Origin", "*")
-        
-        response.headers.add('Access-Control-Allow-Headers', "Content-Type,Authorization,Origin,Accept,X-Requested-With")
-        response.headers.add('Access-Control-Allow-Methods', "GET,PUT,POST,DELETE,OPTIONS")
-        response.headers.add('Access-Control-Allow-Credentials', 'true')
-        response.headers.add('Access-Control-Max-Age', '86400')  # Cache preflight for 24 hours
-        return response
-    
-# Fix: Add CORS headers to all responses
-@app.after_request
-def after_request(response):
-    origin = request.headers.get('Origin')
-    
-    # Allow specific origins
-    allowed_origins = [
-        "http://localhost:5175",
-        "http://localhost:5174",
-        "http://localhost:5173", 
-        "http://localhost:3000",
-        "http://127.0.0.1:5174",
-        os.getenv('FRONTEND_URL', '')
-    ]
-    
-    if origin and (origin in allowed_origins or origin.endswith('.vercel.app')):
-        response.headers.add('Access-Control-Allow-Origin', origin)
-    elif not origin:
-        response.headers.add('Access-Control-Allow-Origin', "*")
-    
-    response.headers.add('Access-Control-Allow-Headers', "Content-Type,Authorization,Origin,Accept,X-Requested-With")
-    response.headers.add('Access-Control-Allow-Methods', "GET,PUT,POST,DELETE,OPTIONS")
-    response.headers.add('Access-Control-Allow-Credentials', 'true')
-    
-    # Fix: Add security headers
-    response.headers.add('X-Content-Type-Options', 'nosniff')
-    response.headers.add('X-Frame-Options', 'DENY')
-    response.headers.add('X-XSS-Protection', '1; mode=block')
-    
-    return response
 
 jwt = JWTManager(app)
 
@@ -292,7 +235,7 @@ You've successfully created your account. Start exploring churn predictions, ana
 
 # Initialize admin user with improved error handling
 def init_admin_user():
-    """Initialize admin user with comprehensive error handling and debugging"""
+    """Initialize admin user with fixed array handling"""
     try:
         logger.info("🔍 Starting admin user initialization...")
         
@@ -302,9 +245,10 @@ def init_admin_user():
 
         logger.info("🔍 Checking for existing admin user...")
         
-        # Use explicit None comparison to avoid array issues
+        # ✅ FIXED: Proper MongoDB query handling
         existing_admin = users_collection.find_one({"email": "admin@churnpredict.com"})
         
+        # ✅ FIXED: Use 'is None' instead of boolean evaluation on query result
         if existing_admin is None:
             logger.info("🔍 Creating new admin user...")
             
@@ -319,7 +263,8 @@ def init_admin_user():
             logger.info("🔍 Inserting admin user into database...")
             result = users_collection.insert_one(admin_user)
             
-            if result.inserted_id:
+            # ✅ FIXED: Proper result checking
+            if result.inserted_id is not None:
                 logger.info("👤 Admin user created successfully")
             else:
                 logger.warning("👤 Admin user creation returned no ID")
@@ -330,10 +275,10 @@ def init_admin_user():
         logger.error(f"❌ Failed to create admin user: {e}")
         logger.error(f"❌ Error type: {type(e).__name__}")
         
-        # Add detailed traceback for debugging
         import traceback
         logger.error(f"❌ Full traceback: {traceback.format_exc()}")
-        
+
+
 # Fix: Enhanced utility functions
 def format_response(success=True, data=None, message=None, error=None):
     """Standardized API response format"""
@@ -448,22 +393,10 @@ def calculate_shap_values(customer_data):
         except Exception as e:
             logger.warning(f"⚠️ Error with Contract Type feature: {e}")
         
-        # Internet Service feature
-        try:
-            internet_value = 0.08 if internet_service == 'Fiber optic' else -0.05
-            internet_impact = 'positive' if internet_service == 'Fiber optic' else 'negative'
-            features.append({
-                'feature': 'Internet Service', 
-                'value': internet_value, 
-                'impact': internet_impact
-            })
-        except Exception as e:
-            logger.warning(f"⚠️ Error with Internet Service feature: {e}")
-        
         # Payment Method feature
         try:
-            payment_value = 0.12 if payment_method == 'Electronic check' else -0.08
-            payment_impact = 'positive' if payment_method == 'Electronic check' else 'negative'
+            payment_value = 0.12 if payment_method == 'Electronic Check' else -0.08
+            payment_impact = 'positive' if payment_method == 'Electronic Check' else 'negative'
             features.append({
                 'feature': 'Payment Method', 
                 'value': payment_value, 
@@ -915,9 +848,8 @@ def clear_history():
 @app.route('/api/health', methods=['GET'])
 def health_check():
     try:
-        # Test database connection
         db_status = "connected"
-        if client:
+        if client is not None:
             try:
                 client.admin.command('ping')
             except Exception:
@@ -925,8 +857,8 @@ def health_check():
         else:
             db_status = "not_configured"
 
-        # Check models status
-        models_status = "loaded" if model and encoder else "not_loaded"
+        # ✅ FIXED: Proper None checking for models
+        models_status = "loaded" if (model is not None and encoder is not None) else "not_loaded"
         
         health_data = {
             "status": "healthy",
@@ -1031,36 +963,29 @@ def initialize_application():
         logger.info("🚀 ChurnPredict API starting up...")
         logger.info(f"🌍 Environment: {os.getenv('FLASK_ENV', 'production')}")
         logger.info(f"🔗 Database: {'Connected' if db is not None else 'Not connected'}")
-        logger.info(f"🤖 Models: {'Loaded' if model and encoder else 'Not loaded'}")
+        logger.info(f"🤖 Models: {'Loaded' if (model is not None and encoder is not None) else 'Not loaded'}")
         logger.info(f"📧 Email: {'Configured' if os.getenv('SMTP_SERVER') else 'Not configured'}")
         
-        # Initialize admin user with error isolation
         try:
             init_admin_user()
             logger.info("👤 Admin user initialization completed")
         except Exception as admin_error:
             logger.warning(f"👤 Admin user initialization failed: {admin_error}")
-            # Don't fail entire startup for admin user issues
         
         logger.info("✅ Application initialization completed")
         
     except Exception as e:
         logger.error(f"❌ Application initialization failed: {e}")
-        # Don't re-raise - let the app continue starting
-# Initialize the application with app context
-with app.app_context():
-    initialize_application()
 
-def safe_initialize():
-    """Safely initialize the application"""
+# Initialize with app context
+if not hasattr(app, '_churn_initialized'):
     try:
-        if app:
-            with app.app_context():
-                initialize_application()
-                return True
+        with app.app_context():
+            initialize_application()
+        app._churn_initialized = True
     except Exception as e:
-        logger.error(f"❌ Safe initialization failed: {e}")
-        return False
+        logger.error(f"❌ Module initialization failed: {e}")
+        app._churn_initialized = True
 
 if __name__ == '__main__':
     # Enhanced startup configuration
@@ -1071,43 +996,6 @@ if __name__ == '__main__':
     logger.info(f"🚀 Starting ChurnPredict API on {host}:{port}")
     logger.info(f"🔧 Debug mode: {debug}")
     logger.info(f"🌐 Frontend URL: {os.getenv('FRONTEND_URL', 'Not set')}")
-    
-    # Initialize application before starting server
-    initialization_success = safe_initialize()
-    if not initialization_success:
-        logger.warning("⚠️  Application started with initialization issues")
-    
-    try:
-        app.run(
-            host=host,
-            port=port,
-            debug=debug,
-            threaded=True,  # Enable threading for better performance
-            use_reloader=debug  # Only use reloader in debug mode
-        )
-    except Exception as e:
-        logger.error(f"❌ Failed to start server: {e}")
-        raise
-else:
-    # When imported as a module, use a one-time initialization flag
-    if not hasattr(app, '_churn_initialized'):
-        try:
-            with app.app_context():
-                initialize_application()
-            app._churn_initialized = True
-        except Exception as e:
-            logger.error(f"❌ Module initialization failed: {e}")
 
-
-# Alternative: Use before_request as fallback initialization
-@app.before_request
-def ensure_initialized():
-    """Ensure initialization runs at least once before any request"""
-    if not hasattr(app, '_churn_initialized'):
-        try:
-            initialize_application()
-            app._churn_initialized = True
-        except Exception as e:
-            logger.error(f"❌ Fallback initialization failed: {e}")
-            # Set flag anyway to prevent repeated attempts
-            app._churn_initialized = True
+    app.run(host=host, port=port, debug=debug, threaded=True, use_reloader=debug)
+    

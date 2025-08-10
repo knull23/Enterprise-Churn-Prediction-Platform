@@ -33,7 +33,7 @@ import { ProbabilityHistogram } from './components/charts/ProbabilityHistogram';
 import { ChurnByContractBarChart } from './components/charts/ChurnByContractBarChart';
 
 function AppContent() {
-  const { user, login, isLoading: authLoading, register } = useAuth();
+  const { user, login, isLoading: authLoading, register, error, clearError } = useAuth();
   const [isDark] = useDarkMode();
 
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -77,7 +77,8 @@ function AppContent() {
       if (response.success && response.data) {
         setDashboardStats(response.data);
       }
-    } catch {
+    } catch (error) {
+      console.error('Failed to load dashboard stats:', error);
       toast.error('Failed to load dashboard statistics');
     }
   };
@@ -88,7 +89,8 @@ function AppContent() {
       if (response.success && response.data) {
         setPredictionHistory(response.data.predictions);
       }
-    } catch {
+    } catch (error) {
+      console.error('Failed to load history:', error);
       toast.error('Failed to load prediction history');
     }
   };
@@ -106,7 +108,8 @@ function AppContent() {
       } else {
         throw new Error(response.error || 'Prediction failed');
       }
-    } catch {
+    } catch (error) {
+      console.error('Prediction error:', error);
       toast.error('Prediction failed. Try again.');
     } finally {
       setIsLoading(false);
@@ -123,7 +126,8 @@ function AppContent() {
         setShowClearConfirm(false);
         toast.success('History cleared!');
       }
-    } catch {
+    } catch (error) {
+      console.error('Clear history error:', error);
       toast.error('Failed to clear history');
     } finally {
       setIsLoading(false);
@@ -137,24 +141,40 @@ function AppContent() {
       if (response.success && response.data) {
         setPredictionHistory(response.data.predictions);
       }
-    } catch {
+    } catch (error) {
+      console.error('Filter history error:', error);
       toast.error('Failed to load filtered history');
     }
   };
 
+  // Enhanced loading screen with better UX
   if (authLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
-        <div className="flex items-center space-x-2">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-          <span className="text-gray-600 dark:text-gray-400">Loading...</span>
+        <div className="text-center space-y-4">
+          <div className="flex items-center justify-center space-x-2">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            <span className="text-gray-600 dark:text-gray-400 text-lg">Loading ChurnPredict...</span>
+          </div>
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            Initializing your session
+          </p>
         </div>
       </div>
     );
   }
 
+  // Show LoginForm when user is not authenticated
   if (!user) {
-    return <LoginForm onLogin={login} onRegister={register} isLoading={isLoading} />;
+    return (
+      <LoginForm 
+        onLogin={login} 
+        onRegister={register} 
+        isLoading={authLoading || isLoading}
+        error={error}
+        onClearError={clearError}
+      />
+    );
   }
 
   const renderContent = () => {
@@ -302,6 +322,8 @@ function AppContent() {
           <Header onToggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)} />
           <main className="flex-1 overflow-auto p-6">{renderContent()}</main>
         </div>
+        
+        {/* Clear History Confirmation Modal */}
         <Modal isOpen={showClearConfirm} onClose={() => setShowClearConfirm(false)} title="Confirm Clear History">
           <div className="space-y-4">
             <p className="text-gray-600 dark:text-gray-400">
@@ -319,6 +341,7 @@ function AppContent() {
         </Modal>
       </div>
 
+      {/* Toast Notifications */}
       <Toaster
         position="top-right"
         toastOptions={{

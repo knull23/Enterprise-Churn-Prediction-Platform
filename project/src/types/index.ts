@@ -23,6 +23,8 @@ export interface AuthContextType {
   logout: () => void;
   isLoading: boolean;
   setUser: (user: User | null) => void;
+  error: string | null;
+  clearError: () => void;
 }
 
 

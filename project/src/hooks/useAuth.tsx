@@ -16,6 +16,8 @@ import { apiService } from '../services/api';
 interface ExtendedAuthContextType extends AuthContextType {
   setUser: (user: User | null) => void;
   register: (credentials: RegisterCredentials) => Promise<boolean>;
+  error: string | null;
+  clearError: () => void;
 }
 
 const AuthContext = createContext<ExtendedAuthContextType | undefined>(
@@ -33,35 +35,68 @@ export const useAuth = () => {
 export const useAuthProvider = (): ExtendedAuthContextType => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const clearError = () => setError(null);
 
   useEffect(() => {
-    const token = localStorage.getItem('authToken');
-    if (token) {
-      apiService
-        .verifyToken(token)
-        .then((userData) => setUser(userData))
-        .catch(() => {
-          localStorage.removeItem('authToken');
+    const initializeAuth = async () => {
+      try {
+        console.log('Initializing auth...');
+        const token = apiService.getToken();
+        
+        if (token) {
+          console.log('Token found, verifying...');
+          try {
+            const userData = await apiService.verifyToken(token);
+            console.log('Token verified, user data:', userData);
+            setUser(userData);
+          } catch (verifyError) {
+            console.log('Token verification failed:', verifyError);
+            // Clear invalid token
+            apiService.clearToken();
+            setUser(null);
+          }
+        } else {
+          console.log('No token found');
           setUser(null);
-        })
-        .finally(() => setIsLoading(false));
-    } else {
-      setIsLoading(false);
-    }
+        }
+      } catch (error) {
+        console.error('Auth initialization failed:', error);
+        setUser(null);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    initializeAuth();
   }, []);
 
   const login = async (credentials: LoginCredentials): Promise<boolean> => {
     try {
+      console.log('Attempting login...');
+      clearError();
+      setIsLoading(true);
+
       const response = await apiService.login(credentials);
+      console.log('Login response:', response);
+
       if (response.success && response.data) {
-        localStorage.setItem('authToken', response.data.token);
+        console.log('Login successful, setting user data');
         setUser(response.data.user);
         return true;
+      } else {
+        console.log('Login failed - no success or data');
+        setError(response.error || 'Login failed');
+        return false;
       }
-      return false;
     } catch (error) {
-      console.error('Login failed:', error);
+      console.error('Login error:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Login failed';
+      setError(errorMessage);
       return false;
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -69,21 +104,36 @@ export const useAuthProvider = (): ExtendedAuthContextType => {
     credentials: RegisterCredentials
   ): Promise<boolean> => {
     try {
+      console.log('Attempting registration...');
+      clearError();
+      setIsLoading(true);
+
       const response = await apiService.register(credentials);
+      console.log('Registration response:', response);
+
       if (response.success && response.data) {
-        localStorage.setItem('authToken', response.data.token);
+        console.log('Registration successful, setting user data');
         setUser(response.data.user);
         return true;
+      } else {
+        console.log('Registration failed - no success or data');
+        setError(response.error || 'Registration failed');
+        return false;
       }
-      return false;
     } catch (error) {
-      console.error('Registration failed:', error);
+      console.error('Registration error:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Registration failed';
+      setError(errorMessage);
       return false;
+    } finally {
+      setIsLoading(false);
     }
   };
 
   const logout = () => {
-    localStorage.removeItem('authToken');
+    console.log('Logging out...');
+    clearError();
+    apiService.clearToken();
     setUser(null);
   };
 
@@ -94,6 +144,8 @@ export const useAuthProvider = (): ExtendedAuthContextType => {
     logout,
     isLoading,
     setUser,
+    error,
+    clearError,
   };
 };
 
