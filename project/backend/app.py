@@ -52,7 +52,6 @@ CORS(
     ]
 )
 
-# Fix: Handle preflight OPTIONS requests
 @app.before_request
 def handle_preflight():
     if request.method == "OPTIONS":
@@ -80,7 +79,7 @@ def handle_preflight():
         response.headers.add('Access-Control-Allow-Credentials', 'true')
         response.headers.add('Access-Control-Max-Age', '86400')  # Cache preflight for 24 hours
         return response
-
+    
 # Fix: Add CORS headers to all responses
 @app.after_request
 def after_request(response):
@@ -327,36 +326,44 @@ def format_response(success=True, data=None, message=None, error=None):
 def calculate_shap_values(customer_data):
     """Calculate mock SHAP values for feature importance with better logic"""
     try:
+        # Fix: Use .get() with proper default values and explicit comparisons
+        monthly_charges = customer_data.get('monthlyCharges', 50)
+        tenure = customer_data.get('tenure', 12)
+        contract = customer_data.get('contract', '')
+        internet_service = customer_data.get('internetService', '')
+        payment_method = customer_data.get('paymentMethod', '')
+        online_security = customer_data.get('onlineSecurity', '')
+        
         features = [
             {
                 'feature': 'Monthly Charges', 
-                'value': (customer_data.get('monthlyCharges', 50) - 50) * 0.01, 
-                'impact': 'positive' if customer_data.get('monthlyCharges', 50) > 70 else 'negative'
+                'value': (monthly_charges - 50) * 0.01, 
+                'impact': 'positive' if monthly_charges > 70 else 'negative'
             },
             {
                 'feature': 'Tenure', 
-                'value': (50 - customer_data.get('tenure', 12)) * 0.008, 
-                'impact': 'positive' if customer_data.get('tenure', 12) < 12 else 'negative'
+                'value': (50 - tenure) * 0.008, 
+                'impact': 'positive' if tenure < 12 else 'negative'
             },
             {
                 'feature': 'Contract Type', 
-                'value': 0.15 if customer_data.get('contract') == 'Month-to-month' else -0.12, 
-                'impact': 'positive' if customer_data.get('contract') == 'Month-to-month' else 'negative'
+                'value': 0.15 if contract == 'Month-to-month' else -0.12, 
+                'impact': 'positive' if contract == 'Month-to-month' else 'negative'
             },
             {
                 'feature': 'Internet Service', 
-                'value': 0.08 if customer_data.get('internetService') == 'Fiber optic' else -0.05, 
-                'impact': 'positive' if customer_data.get('internetService') == 'Fiber optic' else 'negative'
+                'value': 0.08 if internet_service == 'Fiber optic' else -0.05, 
+                'impact': 'positive' if internet_service == 'Fiber optic' else 'negative'
             },
             {
                 'feature': 'Payment Method', 
-                'value': 0.12 if customer_data.get('paymentMethod') == 'Electronic check' else -0.08, 
-                'impact': 'positive' if customer_data.get('paymentMethod') == 'Electronic check' else 'negative'
+                'value': 0.12 if payment_method == 'Electronic check' else -0.08, 
+                'impact': 'positive' if payment_method == 'Electronic check' else 'negative'
             },
             {
                 'feature': 'Online Security', 
-                'value': 0.06 if customer_data.get('onlineSecurity') == 'No' else -0.04, 
-                'impact': 'positive' if customer_data.get('onlineSecurity') == 'No' else 'negative'
+                'value': 0.06 if online_security == 'No' else -0.04, 
+                'impact': 'positive' if online_security == 'No' else 'negative'
             },
         ]
 
@@ -883,20 +890,36 @@ def initialize_application():
         logger.info(f"🤖 Models: {'Loaded' if model and encoder else 'Not loaded'}")
         logger.info(f"📧 Email: {'Configured' if os.getenv('SMTP_SERVER') else 'Not configured'}")
         
-        # Initialize admin user
-        init_admin_user()
+        # Initialize admin user with error isolation
+        try:
+            init_admin_user()
+            logger.info("👤 Admin user initialization completed")
+        except Exception as admin_error:
+            logger.warning(f"👤 Admin user initialization failed: {admin_error}")
+            # Don't fail entire startup for admin user issues
         
         logger.info("✅ Application initialization completed")
         
     except Exception as e:
         logger.error(f"❌ Application initialization failed: {e}")
-
+        # Don't re-raise - let the app continue starting
 # Initialize the application with app context
 with app.app_context():
     initialize_application()
 
+def safe_initialize():
+    """Safely initialize the application"""
+    try:
+        if app:
+            with app.app_context():
+                initialize_application()
+                return True
+    except Exception as e:
+        logger.error(f"❌ Safe initialization failed: {e}")
+        return False
+
 if __name__ == '__main__':
-    # Fix: Enhanced startup configuration
+    # Enhanced startup configuration
     port = int(os.getenv('PORT', 5000))
     debug = os.getenv('FLASK_ENV') == 'development'
     host = '0.0.0.0'  # Allow external connections
@@ -904,6 +927,11 @@ if __name__ == '__main__':
     logger.info(f"🚀 Starting ChurnPredict API on {host}:{port}")
     logger.info(f"🔧 Debug mode: {debug}")
     logger.info(f"🌐 Frontend URL: {os.getenv('FRONTEND_URL', 'Not set')}")
+    
+    # Initialize application before starting server
+    initialization_success = safe_initialize()
+    if not initialization_success:
+        logger.warning("⚠️  Application started with initialization issues")
     
     try:
         app.run(
@@ -916,3 +944,26 @@ if __name__ == '__main__':
     except Exception as e:
         logger.error(f"❌ Failed to start server: {e}")
         raise
+else:
+    # When imported as a module, use a one-time initialization flag
+    if not hasattr(app, '_churn_initialized'):
+        try:
+            with app.app_context():
+                initialize_application()
+            app._churn_initialized = True
+        except Exception as e:
+            logger.error(f"❌ Module initialization failed: {e}")
+
+
+# Alternative: Use before_request as fallback initialization
+@app.before_request
+def ensure_initialized():
+    """Ensure initialization runs at least once before any request"""
+    if not hasattr(app, '_churn_initialized'):
+        try:
+            initialize_application()
+            app._churn_initialized = True
+        except Exception as e:
+            logger.error(f"❌ Fallback initialization failed: {e}")
+            # Set flag anyway to prevent repeated attempts
+            app._churn_initialized = True
