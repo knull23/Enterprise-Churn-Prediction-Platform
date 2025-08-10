@@ -289,14 +289,25 @@ You've successfully created your account. Start exploring churn predictions, ana
     except Exception as e:
         logger.warning(f"📧 Failed to send welcome email to {to_email}: {e}")
 
+
 # Initialize admin user with improved error handling
 def init_admin_user():
+    """Initialize admin user with comprehensive error handling and debugging"""
     try:
+        logger.info("🔍 Starting admin user initialization...")
+        
         if users_collection is None:
             logger.warning("⚠️ Database not available, skipping admin user creation")
             return
 
-        if users_collection.find_one({"email": "admin@churnpredict.com"}) is None:
+        logger.info("🔍 Checking for existing admin user...")
+        
+        # Use explicit None comparison to avoid array issues
+        existing_admin = users_collection.find_one({"email": "admin@churnpredict.com"})
+        
+        if existing_admin is None:
+            logger.info("🔍 Creating new admin user...")
+            
             admin_user = {
                 "email": "admin@churnpredict.com",
                 "password": generate_password_hash("admin123"),
@@ -304,13 +315,25 @@ def init_admin_user():
                 "role": "admin",
                 "created_at": datetime.utcnow()
             }
-            users_collection.insert_one(admin_user)
-            logger.info("👤 Admin user created successfully")
+            
+            logger.info("🔍 Inserting admin user into database...")
+            result = users_collection.insert_one(admin_user)
+            
+            if result.inserted_id:
+                logger.info("👤 Admin user created successfully")
+            else:
+                logger.warning("👤 Admin user creation returned no ID")
         else:
             logger.info("👤 Admin user already exists")
+            
     except Exception as e:
         logger.error(f"❌ Failed to create admin user: {e}")
-
+        logger.error(f"❌ Error type: {type(e).__name__}")
+        
+        # Add detailed traceback for debugging
+        import traceback
+        logger.error(f"❌ Full traceback: {traceback.format_exc()}")
+        
 # Fix: Enhanced utility functions
 def format_response(success=True, data=None, message=None, error=None):
     """Standardized API response format"""
@@ -324,53 +347,174 @@ def format_response(success=True, data=None, message=None, error=None):
     return response
 
 def calculate_shap_values(customer_data):
-    """Calculate mock SHAP values for feature importance with better logic"""
+    """Calculate mock SHAP values for feature importance with comprehensive error handling"""
     try:
-        # Fix: Use .get() with proper default values and explicit comparisons
-        monthly_charges = customer_data.get('monthlyCharges', 50)
-        tenure = customer_data.get('tenure', 12)
-        contract = customer_data.get('contract', '')
-        internet_service = customer_data.get('internetService', '')
-        payment_method = customer_data.get('paymentMethod', '')
-        online_security = customer_data.get('onlineSecurity', '')
+        logger.debug(f"🔍 SHAP function called with data type: {type(customer_data)}")
         
-        features = [
-            {
+        # Handle different input types (dict, pandas DataFrame, etc.)
+        if customer_data is None:
+            logger.warning("⚠️ Customer data is None, returning empty SHAP values")
+            return []
+        
+        # Function to safely extract values from various data types
+        def safe_extract_value(data, key, default_value, value_type=None):
+            """Safely extract value from data structure, handling arrays and type conversion"""
+            try:
+                # Handle dictionary
+                if isinstance(data, dict):
+                    value = data.get(key, default_value)
+                # Handle pandas DataFrame or Series
+                elif hasattr(data, 'get'):
+                    value = data.get(key, default_value)
+                elif hasattr(data, key):
+                    value = getattr(data, key, default_value)
+                else:
+                    value = default_value
+                
+                # Handle numpy arrays, pandas Series, or lists
+                if hasattr(value, '__len__') and not isinstance(value, str):
+                    try:
+                        # Get first element if it's array-like
+                        if hasattr(value, 'iloc'):
+                            value = value.iloc[0]  # pandas Series
+                        elif hasattr(value, '__getitem__'):
+                            value = value[0]  # list or numpy array
+                        else:
+                            value = default_value
+                    except (IndexError, TypeError, KeyError):
+                        value = default_value
+                
+                # Type conversion
+                if value_type == 'float':
+                    try:
+                        return float(value)
+                    except (ValueError, TypeError):
+                        return float(default_value)
+                elif value_type == 'str':
+                    return str(value).strip()
+                else:
+                    return value
+                    
+            except Exception as extract_error:
+                logger.warning(f"⚠️ Error extracting {key}: {extract_error}")
+                return default_value
+        
+        # Safely extract all values
+        monthly_charges = safe_extract_value(customer_data, 'monthlyCharges', 50, 'float')
+        tenure = safe_extract_value(customer_data, 'tenure', 12, 'float')
+        contract = safe_extract_value(customer_data, 'contract', '', 'str')
+        internet_service = safe_extract_value(customer_data, 'internetService', '', 'str')
+        payment_method = safe_extract_value(customer_data, 'paymentMethod', '', 'str')
+        online_security = safe_extract_value(customer_data, 'onlineSecurity', '', 'str')
+        
+        logger.debug(f"🔍 Extracted values - charges: {monthly_charges}, tenure: {tenure}, contract: {contract}")
+        
+        # Build features with safe comparisons
+        features = []
+        
+        # Monthly Charges feature
+        try:
+            charge_value = (monthly_charges - 50) * 0.01
+            charge_impact = 'positive' if monthly_charges > 70 else 'negative'
+            features.append({
                 'feature': 'Monthly Charges', 
-                'value': (monthly_charges - 50) * 0.01, 
-                'impact': 'positive' if monthly_charges > 70 else 'negative'
-            },
-            {
+                'value': charge_value, 
+                'impact': charge_impact
+            })
+        except Exception as e:
+            logger.warning(f"⚠️ Error with Monthly Charges feature: {e}")
+        
+        # Tenure feature
+        try:
+            tenure_value = (50 - tenure) * 0.008
+            tenure_impact = 'positive' if tenure < 12 else 'negative'
+            features.append({
                 'feature': 'Tenure', 
-                'value': (50 - tenure) * 0.008, 
-                'impact': 'positive' if tenure < 12 else 'negative'
-            },
-            {
+                'value': tenure_value, 
+                'impact': tenure_impact
+            })
+        except Exception as e:
+            logger.warning(f"⚠️ Error with Tenure feature: {e}")
+        
+        # Contract Type feature
+        try:
+            contract_value = 0.15 if contract == 'Month-to-month' else -0.12
+            contract_impact = 'positive' if contract == 'Month-to-month' else 'negative'
+            features.append({
                 'feature': 'Contract Type', 
-                'value': 0.15 if contract == 'Month-to-month' else -0.12, 
-                'impact': 'positive' if contract == 'Month-to-month' else 'negative'
-            },
-            {
+                'value': contract_value, 
+                'impact': contract_impact
+            })
+        except Exception as e:
+            logger.warning(f"⚠️ Error with Contract Type feature: {e}")
+        
+        # Internet Service feature
+        try:
+            internet_value = 0.08 if internet_service == 'Fiber optic' else -0.05
+            internet_impact = 'positive' if internet_service == 'Fiber optic' else 'negative'
+            features.append({
                 'feature': 'Internet Service', 
-                'value': 0.08 if internet_service == 'Fiber optic' else -0.05, 
-                'impact': 'positive' if internet_service == 'Fiber optic' else 'negative'
-            },
-            {
+                'value': internet_value, 
+                'impact': internet_impact
+            })
+        except Exception as e:
+            logger.warning(f"⚠️ Error with Internet Service feature: {e}")
+        
+        # Payment Method feature
+        try:
+            payment_value = 0.12 if payment_method == 'Electronic check' else -0.08
+            payment_impact = 'positive' if payment_method == 'Electronic check' else 'negative'
+            features.append({
                 'feature': 'Payment Method', 
-                'value': 0.12 if payment_method == 'Electronic check' else -0.08, 
-                'impact': 'positive' if payment_method == 'Electronic check' else 'negative'
-            },
-            {
+                'value': payment_value, 
+                'impact': payment_impact
+            })
+        except Exception as e:
+            logger.warning(f"⚠️ Error with Payment Method feature: {e}")
+        
+        # Online Security feature
+        try:
+            security_value = 0.06 if online_security == 'No' else -0.04
+            security_impact = 'positive' if online_security == 'No' else 'negative'
+            features.append({
                 'feature': 'Online Security', 
-                'value': 0.06 if online_security == 'No' else -0.04, 
-                'impact': 'positive' if online_security == 'No' else 'negative'
-            },
+                'value': security_value, 
+                'impact': security_impact
+            })
+        except Exception as e:
+            logger.warning(f"⚠️ Error with Online Security feature: {e}")
+        
+        # Sort features by absolute value, handle empty features list
+        try:
+            if features:
+                sorted_features = sorted(features, key=lambda x: abs(x.get('value', 0)), reverse=True)
+                return sorted_features[:6]
+            else:
+                logger.warning("⚠️ No features could be calculated, returning defaults")
+                return [
+                    {'feature': 'Monthly Charges', 'value': 0.1, 'impact': 'positive'},
+                    {'feature': 'Tenure', 'value': -0.05, 'impact': 'negative'},
+                    {'feature': 'Contract Type', 'value': 0.15, 'impact': 'positive'}
+                ]
+        except Exception as sort_error:
+            logger.warning(f"⚠️ Error sorting features: {sort_error}")
+            return []
+        
+    except Exception as e:
+        logger.error(f"❌ Error calculating SHAP values: {e}")
+        logger.error(f"❌ Error type: {type(e).__name__}")
+        
+        # Add detailed traceback for debugging
+        import traceback
+        logger.error(f"❌ SHAP calculation traceback: {traceback.format_exc()}")
+        
+        # Return safe default values
+        return [
+            {'feature': 'Monthly Charges', 'value': 0.0, 'impact': 'neutral'},
+            {'feature': 'Tenure', 'value': 0.0, 'impact': 'neutral'},
+            {'feature': 'Contract Type', 'value': 0.0, 'impact': 'neutral'}
         ]
 
-        return sorted(features, key=lambda x: abs(x['value']), reverse=True)[:6]
-    except Exception as e:
-        logger.error(f"Error calculating SHAP values: {e}")
-        return []
 
 # Routes with enhanced error handling
 
