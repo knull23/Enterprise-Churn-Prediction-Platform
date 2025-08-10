@@ -10,23 +10,42 @@ import {
 } from '../types';
 
 class ApiService {
-  // Use Render backend in development, env var in production
-  private baseUrl =
-    import.meta.env.VITE_API_URL?.replace(/\/$/, '') ||
-    (import.meta.env.DEV
-      ? 'https://enterprise-churn-prediction-platform.onrender.com/api'
-      : '/api');
+  private baseUrl: string;
+  private token: string | null = null;
+
+  constructor() {
+    // Fix: Better URL configuration for both development and production
+    this.baseUrl = this.getBaseUrl();
+    this.token = localStorage.getItem('authToken');
+    
+    console.log('API Service initialized with baseUrl:', this.baseUrl);
+  }
+
+  private getBaseUrl(): string {
+    // Production: Use environment variable or fallback to Render URL
+    if (import.meta.env.PROD) {
+      return import.meta.env.VITE_API_URL?.replace(/\/$/, '') || 
+             'https://enterprise-churn-prediction-platform.onrender.com/api';
+    }
+    
+    // Development: Use environment variable or fallback to localhost
+    return import.meta.env.VITE_API_URL?.replace(/\/$/, '') || 
+           'http://localhost:5000/api';
+  }
 
   private async request<T>(
     endpoint: string,
     options: RequestInit = {}
   ): Promise<ApiResponse<T>> {
     const url = `${this.baseUrl}${endpoint}`;
-    const token = localStorage.getItem('authToken');
-
+    
+    // Enhanced headers with proper CORS support
     const defaultHeaders: HeadersInit = {
       'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      'Accept': 'application/json',
+      // Fix: Add origin header for CORS
+      'Origin': window.location.origin,
+      ...(this.token ? { Authorization: `Bearer ${this.token}` } : {}),
     };
 
     const config: RequestInit = {
@@ -36,25 +55,61 @@ class ApiService {
         ...(options.headers || {}),
       },
       body: options.body,
-      credentials: 'include', // needed for cookies
+      // Fix: Proper credentials and mode for CORS
+      credentials: 'include',
+      mode: 'cors',
+      // Fix: Add cache control
+      cache: 'no-cache',
     };
 
     try {
+      console.log(`Making ${config.method} request to:`, url);
+      
       const response = await fetch(url, config);
-      const contentType = response.headers.get('content-type');
+      
+      console.log('Response status:', response.status);
+      console.log('Response headers:', Object.fromEntries(response.headers.entries()));
 
+      // Fix: Better error handling for different status codes
+      if (!response.ok) {
+        if (response.status === 401) {
+          // Unauthorized - clear token and throw specific error
+          this.clearToken();
+          throw new Error('Unauthorized access. Please login again.');
+        } else if (response.status === 404) {
+          throw new Error('API endpoint not found');
+        } else if (response.status >= 500) {
+          throw new Error(`Server error: ${response.status}`);
+        }
+      }
+
+      const contentType = response.headers.get('content-type');
       let data: any = {};
+      
       if (contentType && contentType.includes('application/json')) {
         data = await response.json();
+      } else if (response.status === 200) {
+        // For successful non-JSON responses
+        data = { success: true, message: 'Request completed successfully' };
       }
 
       if (!response.ok) {
-        throw new Error(data?.error || data?.message || 'API request failed');
+        throw new Error(data?.error || data?.message || `Request failed: ${response.status}`);
       }
 
       return data;
     } catch (error) {
-      console.error('API request failed:', error);
+      console.error(`API request failed for ${url}:`, error);
+      
+      // Fix: Handle specific error types
+      if (error instanceof TypeError && error.message === 'Failed to fetch') {
+        throw new Error('Network error. Please check your connection and try again.');
+      }
+      
+      if (error instanceof Error && error.message.includes('CORS')) {
+        throw new Error('Cross-origin request blocked. Please try again or contact support.');
+      }
+      
       throw error;
     }
   }
@@ -62,34 +117,71 @@ class ApiService {
   async login(
     credentials: LoginCredentials
   ): Promise<ApiResponse<{ token: string; user: User }>> {
-    return this.request<{ token: string; user: User }>('/auth/login', {
-      method: 'POST',
-      body: JSON.stringify(credentials),
-    });
+    try {
+      const response = await this.request<{ token: string; user: User }>('/auth/login', {
+        method: 'POST',
+        body: JSON.stringify(credentials),
+      });
+
+      // Fix: Store token if login successful
+      if (response.success && response.data?.token) {
+        this.setToken(response.data.token);
+      }
+
+      return response;
+    } catch (error) {
+      console.error('Login failed:', error);
+      throw error;
+    }
   }
 
   async register(
     credentials: RegisterCredentials
   ): Promise<ApiResponse<{ token: string; user: User }>> {
-    return this.request<{ token: string; user: User }>('/auth/register', {
-      method: 'POST',
-      body: JSON.stringify(credentials),
-    });
+    try {
+      const response = await this.request<{ token: string; user: User }>('/auth/register', {
+        method: 'POST',
+        body: JSON.stringify(credentials),
+      });
+
+      // Fix: Store token if registration successful
+      if (response.success && response.data?.token) {
+        this.setToken(response.data.token);
+      }
+
+      return response;
+    } catch (error) {
+      console.error('Registration failed:', error);
+      throw error;
+    }
   }
 
-  async verifyToken(token: string): Promise<User> {
-    const response = await this.request<User>('/auth/verify', {
-      method: 'GET',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-    });
-
-    if (response.success && response.data) {
-      return response.data;
+  async verifyToken(token?: string): Promise<User> {
+    const tokenToVerify = token || this.token;
+    
+    if (!tokenToVerify) {
+      throw new Error('No token available for verification');
     }
-    throw new Error('Token verification failed');
+
+    try {
+      const response = await this.request<User>('/auth/verify', {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${tokenToVerify}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (response.success && response.data) {
+        return response.data;
+      }
+      
+      throw new Error('Token verification failed');
+    } catch (error) {
+      console.error('Token verification failed:', error);
+      this.clearToken();
+      throw error;
+    }
   }
 
   async predict(
@@ -126,12 +218,52 @@ class ApiService {
 
   async healthCheck(): Promise<any> {
     try {
-      const response = await fetch(`${this.baseUrl}/health`);
-      return await response.json();
+      console.log('Performing health check...');
+      const response = await fetch(`${this.baseUrl}/health`, {
+        method: 'GET',
+        mode: 'cors',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+      });
+      
+      const data = await response.json();
+      console.log('Health check response:', data);
+      return data;
     } catch (error: any) {
       console.error('Health check failed:', error);
-      return { status: 'error', error: error.message };
+      return { 
+        status: 'error', 
+        error: error.message,
+        baseUrl: this.baseUrl 
+      };
     }
+  }
+
+  // Token management methods
+  setToken(token: string): void {
+    this.token = token;
+    localStorage.setItem('authToken', token);
+  }
+
+  clearToken(): void {
+    this.token = null;
+    localStorage.removeItem('authToken');
+  }
+
+  getToken(): string | null {
+    return this.token || localStorage.getItem('authToken');
+  }
+
+  isAuthenticated(): boolean {
+    return !!this.getToken();
+  }
+
+  // Get current API URL for debugging
+  getApiUrl(): string {
+    return this.baseUrl;
   }
 }
 

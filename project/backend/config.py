@@ -11,6 +11,9 @@ class Config:
     ENCODER_PATH = os.getenv('ENCODER_PATH') or './models/encoder.pkl'
     SCALER_PATH = os.getenv('SCALER_PATH') or './models/scaler.pkl'
     
+    FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:5174')
+    CORS_ORIGINS = os.getenv('CORS_ORIGINS', '').split(',') if os.getenv('CORS_ORIGINS') else []
+   
     # Email settings
     SMTP_HOST = os.getenv('SMTP_SERVER')
     SMTP_PORT = int(os.getenv('SMTP_PORT', 587))
@@ -30,8 +33,14 @@ class ProductionConfig(Config):
     DEBUG = False
     FLASK_ENV = 'production'
 
+class TestingConfig(Config):
+    """Testing configuration"""
+    TESTING = True
+    DEBUG = True
+
 config = {
     'development': DevelopmentConfig,
     'production': ProductionConfig,
-    'default': DevelopmentConfig
+    'default': DevelopmentConfig,
+    'testing': TestingConfig
 }

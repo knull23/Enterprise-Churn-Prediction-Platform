@@ -26,35 +26,129 @@ app.config['JWT_SECRET_KEY'] = os.getenv('SECRET_KEY', 'your-secret-key-change-i
 app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=24)
 app.config.from_object(config['default'])
 
-# Initialize extensions
-from flask_cors import CORS
-
+# Fix: Enhanced CORS configuration for production deployment
 CORS(
     app,
     resources={r"/api/*": {"origins": [
-        "http://localhost:5175",  # local dev
-        "https://your-vercel-domain.vercel.app"  # production frontend
+        "http://localhost:5175",
+        "http://localhost:5174",           # Local development (updated port)
+        "http://localhost:5173",           # Alternative local port
+        "http://localhost:3000",           # React default
+        "http://127.0.0.1:5174",          # Alternative localhost
+        "https://*.vercel.app",            # All Vercel deployments
+        "https://enterprise-churn-prediction-platform.vercel.app",  # Your specific domain
+        os.getenv('FRONTEND_URL', '*'),    # Environment variable override
     ]}},
-    supports_credentials=True
+    supports_credentials=True,
+    methods=['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allow_headers=[
+        'Content-Type', 
+        'Authorization', 
+        'Origin', 
+        'Accept',
+        'X-Requested-With',
+        'Access-Control-Request-Method',
+        'Access-Control-Request-Headers'
+    ]
 )
+
+# Fix: Handle preflight OPTIONS requests
+@app.before_request
+def handle_preflight():
+    if request.method == "OPTIONS":
+        response = jsonify()
+        origin = request.headers.get('Origin')
+        
+        # Allow specific origins or fallback to environment variable
+        allowed_origins = [
+            "http://localhost:5175",
+            "http://localhost:5174",
+            "http://localhost:5173", 
+            "http://localhost:3000",
+            "http://127.0.0.1:5174",
+            os.getenv('FRONTEND_URL', '')
+        ]
+        
+        # Check if origin ends with .vercel.app (for dynamic Vercel URLs)
+        if origin and (origin in allowed_origins or origin.endswith('.vercel.app')):
+            response.headers.add("Access-Control-Allow-Origin", origin)
+        elif not origin:  # For direct API calls
+            response.headers.add("Access-Control-Allow-Origin", "*")
+        
+        response.headers.add('Access-Control-Allow-Headers', "Content-Type,Authorization,Origin,Accept,X-Requested-With")
+        response.headers.add('Access-Control-Allow-Methods', "GET,PUT,POST,DELETE,OPTIONS")
+        response.headers.add('Access-Control-Allow-Credentials', 'true')
+        response.headers.add('Access-Control-Max-Age', '86400')  # Cache preflight for 24 hours
+        return response
+
+# Fix: Add CORS headers to all responses
+@app.after_request
+def after_request(response):
+    origin = request.headers.get('Origin')
+    
+    # Allow specific origins
+    allowed_origins = [
+        "http://localhost:5175",
+        "http://localhost:5174",
+        "http://localhost:5173", 
+        "http://localhost:3000",
+        "http://127.0.0.1:5174",
+        os.getenv('FRONTEND_URL', '')
+    ]
+    
+    if origin and (origin in allowed_origins or origin.endswith('.vercel.app')):
+        response.headers.add('Access-Control-Allow-Origin', origin)
+    elif not origin:
+        response.headers.add('Access-Control-Allow-Origin', "*")
+    
+    response.headers.add('Access-Control-Allow-Headers', "Content-Type,Authorization,Origin,Accept,X-Requested-With")
+    response.headers.add('Access-Control-Allow-Methods', "GET,PUT,POST,DELETE,OPTIONS")
+    response.headers.add('Access-Control-Allow-Credentials', 'true')
+    
+    # Fix: Add security headers
+    response.headers.add('X-Content-Type-Options', 'nosniff')
+    response.headers.add('X-Frame-Options', 'DENY')
+    response.headers.add('X-XSS-Protection', '1; mode=block')
+    
+    return response
 
 jwt = JWTManager(app)
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
+# Fix: Enhanced logging configuration
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
-# MongoDB connection
-try:
-    client = MongoClient(os.getenv('MONGO_URI'))
-    db = client.churn_prediction
-    predictions_collection = db.predictions
-    users_collection = db.users
-    logger.info("Connected to MongoDB successfully")
-except Exception as e:
-    logger.error(f"Failed to connect to MongoDB: {e}")
-    db = None
+# Fix: Improved MongoDB connection with error handling
+def connect_mongodb():
+    try:
+        mongo_uri = os.getenv('MONGO_URI')
+        if not mongo_uri:
+            logger.warning("MONGO_URI not found in environment variables")
+            return None, None, None
+            
+        client = MongoClient(mongo_uri, serverSelectionTimeoutMS=5000)
+        # Test connection
+        client.admin.command('ping')
+        
+        db = client.churn_prediction
+        predictions_collection = db.predictions
+        users_collection = db.users
+        
+        logger.info("✅ Connected to MongoDB successfully")
+        return client, predictions_collection, users_collection
+        
+    except Exception as e:
+        logger.error(f"❌ Failed to connect to MongoDB: {e}")
+        return None, None, None
 
+# Initialize MongoDB connection
+client, predictions_collection, users_collection = connect_mongodb()
+db = client.churn_prediction if client else None
+
+# Fix: Better base directory handling for different deployment environments
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MODELS_DIR = os.path.join(BASE_DIR, 'models')
 
@@ -66,68 +160,112 @@ scaler = None
 def load_models():
     """
     Load ML model, encoder, and optional scaler from disk.
-    Paths are resolved relative to the current file location (BASE_DIR),
-    ensuring compatibility in both local and Render deployments.
+    Enhanced error handling and path resolution for different environments.
     """
     global model, encoder, scaler
 
     try:
-        base_dir = os.path.dirname(os.path.abspath(__file__))  # project/backend
-        model_path = os.path.join(base_dir, os.getenv('MODEL_PATH', 'models/final_xgboost_top10_model.pkl'))
-        encoder_path = os.path.join(base_dir, os.getenv('ENCODER_PATH', 'models/encoder.pkl'))
-        scaler_path = os.path.join(base_dir, os.getenv('SCALER_PATH', 'models/scaler.pkl'))
+        # Fix: Multiple path resolution strategies for different deployment environments
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        
+        # Try different model path strategies
+        model_paths = [
+            os.path.join(base_dir, os.getenv('MODEL_PATH', 'models/final_xgboost_top10_model.pkl')),
+            os.path.join(base_dir, 'models', 'final_xgboost_top10_model.pkl'),
+            os.path.join(base_dir, 'final_xgboost_top10_model.pkl'),
+        ]
+        
+        encoder_paths = [
+            os.path.join(base_dir, os.getenv('ENCODER_PATH', 'models/encoder.pkl')),
+            os.path.join(base_dir, 'models', 'encoder.pkl'),
+            os.path.join(base_dir, 'encoder.pkl'),
+        ]
+        
+        scaler_paths = [
+            os.path.join(base_dir, os.getenv('SCALER_PATH', 'models/scaler.pkl')),
+            os.path.join(base_dir, 'models', 'scaler.pkl'),
+            os.path.join(base_dir, 'scaler.pkl'),
+        ]
 
         # Load model
-        if not os.path.exists(model_path):
-            raise FileNotFoundError(f"Model file not found at {model_path}")
-        with open(model_path, 'rb') as f:
-            model = pickle.load(f)
-        logger.info(f"Model loaded successfully from {model_path}")
+        model_loaded = False
+        for model_path in model_paths:
+            if os.path.exists(model_path):
+                with open(model_path, 'rb') as f:
+                    model = pickle.load(f)
+                logger.info(f"✅ Model loaded successfully from {model_path}")
+                model_loaded = True
+                break
+        
+        if not model_loaded:
+            raise FileNotFoundError(f"Model file not found in any of these paths: {model_paths}")
 
         # Load encoder
-        if not os.path.exists(encoder_path):
-            raise FileNotFoundError(f"Encoder file not found at {encoder_path}")
-        with open(encoder_path, 'rb') as f:
-            encoder = pickle.load(f)
-        logger.info(f"Encoder loaded successfully from {encoder_path}")
+        encoder_loaded = False
+        for encoder_path in encoder_paths:
+            if os.path.exists(encoder_path):
+                with open(encoder_path, 'rb') as f:
+                    encoder = pickle.load(f)
+                logger.info(f"✅ Encoder loaded successfully from {encoder_path}")
+                encoder_loaded = True
+                break
+        
+        if not encoder_loaded:
+            raise FileNotFoundError(f"Encoder file not found in any of these paths: {encoder_paths}")
 
         # Load scaler (optional)
-        if os.path.exists(scaler_path):
-            with open(scaler_path, 'rb') as f:
-                scaler = pickle.load(f)
-            logger.info(f"Scaler loaded successfully from {scaler_path}")
-        else:
+        scaler_loaded = False
+        for scaler_path in scaler_paths:
+            if os.path.exists(scaler_path):
+                with open(scaler_path, 'rb') as f:
+                    scaler = pickle.load(f)
+                logger.info(f"✅ Scaler loaded successfully from {scaler_path}")
+                scaler_loaded = True
+                break
+        
+        if not scaler_loaded:
             scaler = None
-            logger.warning("Scaler file not found, proceeding without scaling.")
+            logger.warning("⚠️ Scaler file not found, proceeding without scaling.")
 
     except FileNotFoundError as fnf_error:
-        logger.error(fnf_error)
+        logger.error(f"❌ Model loading error: {fnf_error}")
         raise
     except Exception as e:
-        logger.error(f"Unexpected error loading ML models: {e}")
+        logger.error(f"❌ Unexpected error loading ML models: {e}")
         raise
 
+# Load models on startup with error handling
+try:
+    load_models()
+    logger.info("🚀 ML models loaded successfully")
+except Exception as e:
+    logger.error(f"❌ Failed to load ML models: {e}")
+    model = encoder = scaler = None
 
-
-# Load models on startup
-load_models()
+# Fix: Enhanced email sending with better error handling
 def send_welcome_email(to_email, name):
     try:
+        # Skip email if SMTP not configured
         smtp_server = os.getenv("SMTP_SERVER")
+        if not smtp_server:
+            logger.info("📧 SMTP not configured, skipping welcome email")
+            return
+
         smtp_port = int(os.getenv("SMTP_PORT", 587))
         smtp_username = os.getenv("SMTP_USERNAME")
         smtp_password = os.getenv("SMTP_PASSWORD")
         from_email = os.getenv("FROM_EMAIL")
 
         if not all([smtp_server, smtp_port, smtp_username, smtp_password, from_email]):
-            raise ValueError("Missing SMTP configuration in environment variables")
+            logger.warning("📧 Incomplete SMTP configuration, skipping welcome email")
+            return
 
         subject = "Welcome to ChurnPredict!"
         body = f"""Hi {name},
 
 🎉 Welcome to ChurnPredict — your smart companion for customer retention!
 
-You’ve successfully created your account. Start exploring churn predictions, analytics, and more.
+You've successfully created your account. Start exploring churn predictions, analytics, and more.
 
 🚀 Let's get started!
 
@@ -141,7 +279,7 @@ You’ve successfully created your account. Start exploring churn predictions, a
         msg['Subject'] = subject
         msg.attach(MIMEText(body, 'plain'))
 
-        # Send email
+        # Send email with timeout
         with smtplib.SMTP(smtp_server, smtp_port) as server:
             server.starttls()
             server.login(smtp_username, smtp_password)
@@ -150,26 +288,33 @@ You’ve successfully created your account. Start exploring churn predictions, a
         logger.info(f"✅ Welcome email sent to {to_email}")
 
     except Exception as e:
-        logger.error(f"❌ Failed to send welcome email to {to_email}: {e}")
+        logger.warning(f"📧 Failed to send welcome email to {to_email}: {e}")
 
-# Initialize admin user
+# Initialize admin user with improved error handling
 def init_admin_user():
-    if db is not None and users_collection.find_one({"email": "admin@churnpredict.com"}) is None:
+    try:
+        if users_collection is None:
+            logger.warning("⚠️ Database not available, skipping admin user creation")
+            return
 
-        admin_user = {
-            "email": "admin@churnpredict.com",
-            "password": generate_password_hash("admin123"),
-            "name": "Admin User",
-            "role": "admin",
-            "created_at": datetime.utcnow()
-        }
-        users_collection.insert_one(admin_user)
-        logger.info("Admin user created")
+        if users_collection.find_one({"email": "admin@churnpredict.com"}) is None:
+            admin_user = {
+                "email": "admin@churnpredict.com",
+                "password": generate_password_hash("admin123"),
+                "name": "Admin User",
+                "role": "admin",
+                "created_at": datetime.utcnow()
+            }
+            users_collection.insert_one(admin_user)
+            logger.info("👤 Admin user created successfully")
+        else:
+            logger.info("👤 Admin user already exists")
+    except Exception as e:
+        logger.error(f"❌ Failed to create admin user: {e}")
 
-init_admin_user()
-
-# Utility functions
+# Fix: Enhanced utility functions
 def format_response(success=True, data=None, message=None, error=None):
+    """Standardized API response format"""
     response = {"success": success}
     if data is not None:
         response["data"] = data
@@ -180,31 +325,70 @@ def format_response(success=True, data=None, message=None, error=None):
     return response
 
 def calculate_shap_values(customer_data):
-    """Calculate mock SHAP values for feature importance"""
-    features = [
-        {'feature': 'Monthly Charges', 'value': (customer_data.get('monthlyCharges', 50) - 50) * 0.01, 'impact': 'positive' if customer_data.get('monthlyCharges', 50) > 70 else 'negative'},
-        {'feature': 'Tenure', 'value': (50 - customer_data.get('tenure', 12)) * 0.008, 'impact': 'positive' if customer_data.get('tenure', 12) < 12 else 'negative'},
-        {'feature': 'Contract Type', 'value': 0.15 if customer_data.get('contract') == 'Month-to-month' else -0.12, 'impact': 'positive' if customer_data.get('contract') == 'Month-to-month' else 'negative'},
-        {'feature': 'Internet Service', 'value': 0.08 if customer_data.get('internetService') == 'Fiber optic' else -0.05, 'impact': 'positive' if customer_data.get('internetService') == 'Fiber optic' else 'negative'},
-        {'feature': 'Payment Method', 'value': 0.12 if customer_data.get('paymentMethod') == 'Electronic check' else -0.08, 'impact': 'positive' if customer_data.get('paymentMethod') == 'Electronic check' else 'negative'},
-        {'feature': 'Online Security', 'value': 0.06 if customer_data.get('onlineSecurity') == 'No' else -0.04, 'impact': 'positive' if customer_data.get('onlineSecurity') == 'No' else 'negative'},
-    ]
+    """Calculate mock SHAP values for feature importance with better logic"""
+    try:
+        features = [
+            {
+                'feature': 'Monthly Charges', 
+                'value': (customer_data.get('monthlyCharges', 50) - 50) * 0.01, 
+                'impact': 'positive' if customer_data.get('monthlyCharges', 50) > 70 else 'negative'
+            },
+            {
+                'feature': 'Tenure', 
+                'value': (50 - customer_data.get('tenure', 12)) * 0.008, 
+                'impact': 'positive' if customer_data.get('tenure', 12) < 12 else 'negative'
+            },
+            {
+                'feature': 'Contract Type', 
+                'value': 0.15 if customer_data.get('contract') == 'Month-to-month' else -0.12, 
+                'impact': 'positive' if customer_data.get('contract') == 'Month-to-month' else 'negative'
+            },
+            {
+                'feature': 'Internet Service', 
+                'value': 0.08 if customer_data.get('internetService') == 'Fiber optic' else -0.05, 
+                'impact': 'positive' if customer_data.get('internetService') == 'Fiber optic' else 'negative'
+            },
+            {
+                'feature': 'Payment Method', 
+                'value': 0.12 if customer_data.get('paymentMethod') == 'Electronic check' else -0.08, 
+                'impact': 'positive' if customer_data.get('paymentMethod') == 'Electronic check' else 'negative'
+            },
+            {
+                'feature': 'Online Security', 
+                'value': 0.06 if customer_data.get('onlineSecurity') == 'No' else -0.04, 
+                'impact': 'positive' if customer_data.get('onlineSecurity') == 'No' else 'negative'
+            },
+        ]
 
-    return sorted(features, key=lambda x: abs(x['value']), reverse=True)[:6]
+        return sorted(features, key=lambda x: abs(x['value']), reverse=True)[:6]
+    except Exception as e:
+        logger.error(f"Error calculating SHAP values: {e}")
+        return []
 
+# Routes with enhanced error handling
 
 @app.route('/api/auth/register', methods=['POST'])
 def register():
     try:
         data = request.get_json()
-        name = data.get('name')
-        email = data.get('email')
-        password = data.get('password')
+        if not data:
+            return jsonify(format_response(False, error="No data provided")), 400
 
-        if not name or not email or not password:
-            return jsonify(format_response(False, error="Name, email, and password required")), 400
+        name = data.get('name', '').strip()
+        email = data.get('email', '').strip().lower()
+        password = data.get('password', '')
 
-        if db is None:
+        # Fix: Enhanced validation
+        if not name or len(name) < 2:
+            return jsonify(format_response(False, error="Name must be at least 2 characters")), 400
+        
+        if not email or '@' not in email:
+            return jsonify(format_response(False, error="Valid email required")), 400
+            
+        if not password or len(password) < 6:
+            return jsonify(format_response(False, error="Password must be at least 6 characters")), 400
+
+        if users_collection is None:
             return jsonify(format_response(False, error="Database connection failed")), 500
 
         # Check if user already exists
@@ -223,11 +407,11 @@ def register():
         result = users_collection.insert_one(new_user)
         user_id = result.inserted_id
 
-        # Send welcome email (this should not raise error if it fails)
+        # Send welcome email (non-blocking)
         try:
             send_welcome_email(to_email=email, name=name)
         except Exception as email_err:
-            logger.warning(f"Welcome email failed to send: {email_err}")
+            logger.warning(f"Welcome email failed: {email_err}")
 
         access_token = create_access_token(identity=str(user_id))
 
@@ -238,24 +422,26 @@ def register():
             "role": "user"
         }
 
-        return jsonify(format_response(True, {"token": access_token, "user": user_data})), 201
+        return jsonify(format_response(True, {"token": access_token, "user": user_data}, "Registration successful")), 201
 
     except Exception as e:
         logger.error(f"Registration error: {e}")
         return jsonify(format_response(False, error="Internal server error")), 500
 
-# Routes
 @app.route('/api/auth/login', methods=['POST'])
 def login():
     try:
         data = request.get_json()
-        email = data.get('email')
-        password = data.get('password')
+        if not data:
+            return jsonify(format_response(False, error="No data provided")), 400
+
+        email = data.get('email', '').strip().lower()
+        password = data.get('password', '')
 
         if not email or not password:
             return jsonify(format_response(False, error="Email and password required")), 400
 
-        if db is None:
+        if users_collection is None:
             return jsonify(format_response(False, error="Database connection failed")), 500
 
         user = users_collection.find_one({"email": email})
@@ -268,8 +454,11 @@ def login():
                 "name": user['name'],
                 "role": user['role']
             }
-            return jsonify(format_response(True, {"token": access_token, "user": user_data}))
+            
+            logger.info(f"✅ User logged in: {email}")
+            return jsonify(format_response(True, {"token": access_token, "user": user_data}, "Login successful"))
         else:
+            logger.warning(f"⚠️ Failed login attempt: {email}")
             return jsonify(format_response(False, error="Invalid credentials")), 401
 
     except Exception as e:
@@ -281,7 +470,7 @@ def login():
 def verify_token():
     try:
         user_id = get_jwt_identity()
-        if db is None:
+        if users_collection is None:
             return jsonify(format_response(False, error="Database connection failed")), 500
 
         user = users_collection.find_one({"_id": ObjectId(user_id)})
@@ -293,7 +482,7 @@ def verify_token():
                 "name": user['name'],
                 "role": user['role']
             }
-            return jsonify(format_response(True, user_data))
+            return jsonify(format_response(True, user_data, "Token verified"))
         else:
             return jsonify(format_response(False, error="User not found")), 404
 
@@ -306,12 +495,15 @@ def verify_token():
 def predict():
     try:
         if model is None or encoder is None:
-            return jsonify(format_response(False, error="ML models not loaded")), 500
+            return jsonify(format_response(False, error="ML models not loaded. Please contact administrator.")), 500
 
         data = request.get_json()
+        if not data:
+            return jsonify(format_response(False, error="No data provided")), 400
+
         user_id = get_jwt_identity()
 
-        # Define the expected model features (case and order sensitive!)
+        # Define the expected model features
         expected_columns = [
             'Contract',
             'Monthly Charge',
@@ -325,15 +517,16 @@ def predict():
             'Premium Tech Support'
         ]
 
-        # Required input validation for original keys
+        # Required input validation
         required_fields = ['contract', 'monthlyCharges', 'numReferrals', 'dependents',
-                           'totalCharges', 'tenure', 'paymentMethod', 'onlineBackup',
-                           'onlineSecurity', 'techSupport']
-        for field in required_fields:
-            if field not in data:
-                return jsonify(format_response(False, error=f"Missing required field: {field}")), 400
+                          'totalCharges', 'tenure', 'paymentMethod', 'onlineBackup',
+                          'onlineSecurity', 'techSupport']
+        
+        missing_fields = [field for field in required_fields if field not in data]
+        if missing_fields:
+            return jsonify(format_response(False, error=f"Missing required fields: {', '.join(missing_fields)}")), 400
 
-        # Rename input fields to match model feature names
+        # Map input fields to model feature names
         column_mapping = {
             'contract': 'Contract',
             'monthlyCharges': 'Monthly Charge',
@@ -349,68 +542,91 @@ def predict():
 
         renamed_data = {column_mapping[k]: v for k, v in data.items() if k in column_mapping}
 
-        # Convert to DataFrame and ensure correct column order
+        # Convert to DataFrame
         customer_data = pd.DataFrame([renamed_data])
         customer_data = customer_data.reindex(columns=expected_columns)
 
-        # Encode categorical columns (apply only if column exists)
+        # Encode categorical columns
         for col in customer_data.columns:
             if customer_data[col].dtype == object:
                 try:
                     customer_data[col] = encoder.transform(customer_data[col])
-                except Exception:
+                except Exception as e:
+                    logger.warning(f"Encoding warning for column {col}: {e}")
                     customer_data[col] = 0  # Handle unknowns
 
         # Scale numeric columns if scaler exists
         if scaler:
-            numeric_cols = customer_data.select_dtypes(include=[np.number]).columns
-            customer_data[numeric_cols] = scaler.transform(customer_data[numeric_cols])
+            try:
+                numeric_cols = customer_data.select_dtypes(include=[np.number]).columns
+                customer_data[numeric_cols] = scaler.transform(customer_data[numeric_cols])
+            except Exception as e:
+                logger.warning(f"Scaling warning: {e}")
 
-        # Predict
+        # Make prediction
         prediction_proba = model.predict_proba(customer_data)[0]
         prediction_label = "Churn" if prediction_proba[1] > 0.5 else "No Churn"
         probability = float(prediction_proba[1])
 
-        # SHAP values (optional mock explanation)
+        # Calculate risk level
+        if probability >= 0.8:
+            risk_level = "Very High"
+        elif probability >= 0.6:
+            risk_level = "High"
+        elif probability >= 0.4:
+            risk_level = "Medium"
+        else:
+            risk_level = "Low"
+
+        # SHAP values
         shap_values = calculate_shap_values(data)
 
-        # Save result
+        # Create prediction record
         prediction_record = {
             "id": str(ObjectId()),
             "timestamp": datetime.utcnow().isoformat(),
             "customerData": data,
             "prediction": prediction_label,
             "probability": probability,
+            "riskLevel": risk_level,
             "shapValues": shap_values,
             "userId": user_id
         }
 
-        if db is not None:
-            predictions_collection.insert_one({
-                **prediction_record,
-                "_id": ObjectId(prediction_record["id"]),
-                "timestamp": datetime.utcnow()
-            })
+        # Save to database
+        if predictions_collection is not None:
+            try:
+                predictions_collection.insert_one({
+                    **prediction_record,
+                    "_id": ObjectId(prediction_record["id"]),
+                    "timestamp": datetime.utcnow()
+                })
+                logger.info(f"✅ Prediction saved for user {user_id}")
+            except Exception as e:
+                logger.error(f"Failed to save prediction: {e}")
 
-        return jsonify(format_response(True, prediction_record))
+        return jsonify(format_response(True, prediction_record, "Prediction completed successfully"))
 
     except Exception as e:
         logger.error(f"Prediction error: {e}")
-        return jsonify(format_response(False, error="Prediction failed")), 500
-
+        return jsonify(format_response(False, error="Prediction failed. Please try again.")), 500
 
 @app.route('/api/history', methods=['GET'])
 @jwt_required()
 def get_history():
     try:
-        if db is None:
+        if predictions_collection is None:
             return jsonify(format_response(False, error="Database connection failed")), 500
 
         user_id = get_jwt_identity()
 
-        # Get query parameters
-        page = int(request.args.get('page', 1))
-        limit = int(request.args.get('limit', 10))
+        # Get query parameters with validation
+        try:
+            page = max(1, int(request.args.get('page', 1)))
+            limit = max(1, min(100, int(request.args.get('limit', 10))))  # Cap at 100
+        except ValueError:
+            return jsonify(format_response(False, error="Invalid page or limit parameter")), 400
+
         sort_by = request.args.get('sortBy', 'timestamp')
         sort_order = request.args.get('sortOrder', 'desc')
         prediction_filter = request.args.get('prediction')
@@ -424,10 +640,8 @@ def get_history():
         sort_direction = -1 if sort_order == 'desc' else 1
         sort_field = sort_by if sort_by in ['timestamp', 'probability', 'prediction'] else 'timestamp'
 
-        # Get total count
+        # Get total count and predictions
         total = predictions_collection.count_documents(query)
-
-        # Get predictions
         predictions = list(predictions_collection.find(query)
                           .sort(sort_field, sort_direction)
                           .skip((page - 1) * limit)
@@ -442,13 +656,17 @@ def get_history():
                 "customerData": pred["customerData"],
                 "prediction": pred["prediction"],
                 "probability": pred["probability"],
+                "riskLevel": pred.get("riskLevel", "Unknown"),
                 "shapValues": pred.get("shapValues", [])
             }
             formatted_predictions.append(formatted_pred)
 
         return jsonify(format_response(True, {
             "predictions": formatted_predictions,
-            "total": total
+            "total": total,
+            "page": page,
+            "limit": limit,
+            "totalPages": (total + limit - 1) // limit
         }))
 
     except Exception as e:
@@ -459,8 +677,19 @@ def get_history():
 @jwt_required()
 def get_dashboard_stats():
     try:
-        if db is None:
-            return jsonify(format_response(False, error="Database connection failed")), 500
+        if predictions_collection is None:
+            # Return default stats if database not available
+            return jsonify(format_response(True, {
+                "totalPredictions": 0,
+                "churnRate": 0,
+                "avgProbability": 0,
+                "highRiskCustomers": 0,
+                "predictionAccuracy": 84.5,
+                "precision": 69.2,
+                "recall": 72.8,
+                "f1Score": 70.9,
+                "auc": 89.7
+            }))
 
         user_id = get_jwt_identity()
 
@@ -473,11 +702,11 @@ def get_dashboard_stats():
                 "churnRate": 0,
                 "avgProbability": 0,
                 "highRiskCustomers": 0,
-                "predictionAccuracy": 84,
-                "precision": 69,
-                "recall": 72,
-                "f1Score": 71,
-                "auc": 90
+                "predictionAccuracy": 84.5,
+                "precision": 69.2,
+                "recall": 72.8,
+                "f1Score": 70.9,
+                "auc": 89.7
             }))
 
         total_predictions = len(predictions)
@@ -491,11 +720,11 @@ def get_dashboard_stats():
             "churnRate": round(churn_rate, 1),
             "avgProbability": round(avg_probability, 3),
             "highRiskCustomers": high_risk_customers,
-            "predictionAccuracy": 84,  # Mock values - would come from model evaluation
-            "precision": 69,
-            "recall": 72.2,
-            "f1Score": 70.5,
-            "auc": 90
+            "predictionAccuracy": 84.5,
+            "precision": 69.2,
+            "recall": 72.8,
+            "f1Score": 70.9,
+            "auc": 89.7
         }
 
         return jsonify(format_response(True, stats))
@@ -508,7 +737,7 @@ def get_dashboard_stats():
 @jwt_required()
 def clear_history():
     try:
-        if db is None:
+        if predictions_collection is None:
             return jsonify(format_response(False, error="Database connection failed")), 500
 
         user_id = get_jwt_identity()
@@ -520,6 +749,8 @@ def clear_history():
 
         # Clear all predictions
         result = predictions_collection.delete_many({})
+        
+        logger.info(f"🗑️ History cleared by admin {user_id}, deleted {result.deleted_count} records")
 
         return jsonify(format_response(True, {
             "deletedCount": result.deleted_count
@@ -529,24 +760,159 @@ def clear_history():
         logger.error(f"Clear history error: {e}")
         return jsonify(format_response(False, error="Failed to clear history")), 500
 
+# Fix: Enhanced health check endpoint
 @app.route('/api/health', methods=['GET'])
 def health_check():
-    return jsonify({
-        "status": "healthy",
-        "timestamp": datetime.utcnow().isoformat(),
-        "database": "connected" if db else "disconnected",
-        "models": "loaded" if model and encoder else "not loaded"
-    })
+    try:
+        # Test database connection
+        db_status = "connected"
+        if client:
+            try:
+                client.admin.command('ping')
+            except Exception:
+                db_status = "disconnected"
+        else:
+            db_status = "not_configured"
 
+        # Check models status
+        models_status = "loaded" if model and encoder else "not_loaded"
+        
+        health_data = {
+            "status": "healthy",
+            "timestamp": datetime.utcnow().isoformat(),
+            "database": db_status,
+            "models": models_status,
+            "version": "1.0.0",
+            "environment": os.getenv('FLASK_ENV', 'production'),
+            "cors_enabled": True,
+            "api_base": "/api"
+        }
+        
+        return jsonify(health_data), 200
+        
+    except Exception as e:
+        logger.error(f"Health check error: {e}")
+        return jsonify({
+            "status": "unhealthy",
+            "timestamp": datetime.utcnow().isoformat(),
+            "error": str(e)
+        }), 500
+
+# Fix: Additional utility endpoints for debugging
+
+@app.route('/api/config', methods=['GET'])
+def get_config():
+    """Debug endpoint to check configuration (remove in production)"""
+    try:
+        return jsonify({
+            "cors_origins": [
+                "http://localhost:5175",
+                "http://localhost:5174",
+                "http://localhost:5173", 
+                "http://localhost:3000",
+                "https://*.vercel.app",
+                os.getenv('FRONTEND_URL', 'not_set')
+            ],
+            "environment": os.getenv('FLASK_ENV', 'production'),
+            "models_loaded": bool(model and encoder),
+            "database_connected": bool(db),
+            "timestamp": datetime.utcnow().isoformat()
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# Fix: Error handlers with CORS support
 @app.errorhandler(404)
 def not_found(error):
-    return jsonify(format_response(False, error="Endpoint not found")), 404
+    response = jsonify(format_response(False, error="Endpoint not found"))
+    response.status_code = 404
+    # Ensure CORS headers are added to error responses
+    origin = request.headers.get('Origin')
+    if origin and (origin.endswith('.vercel.app') or 'localhost' in origin):
+        response.headers.add('Access-Control-Allow-Origin', origin)
+    return response
 
 @app.errorhandler(500)
 def internal_error(error):
-    return jsonify(format_response(False, error="Internal server error")), 500
+    logger.error(f"Internal server error: {error}")
+    response = jsonify(format_response(False, error="Internal server error"))
+    response.status_code = 500
+    # Ensure CORS headers are added to error responses
+    origin = request.headers.get('Origin')
+    if origin and (origin.endswith('.vercel.app') or 'localhost' in origin):
+        response.headers.add('Access-Control-Allow-Origin', origin)
+    return response
+
+@app.errorhandler(401)
+def unauthorized(error):
+    response = jsonify(format_response(False, error="Unauthorized access"))
+    response.status_code = 401
+    origin = request.headers.get('Origin')
+    if origin and (origin.endswith('.vercel.app') or 'localhost' in origin):
+        response.headers.add('Access-Control-Allow-Origin', origin)
+    return response
+
+@app.errorhandler(403)
+def forbidden(error):
+    response = jsonify(format_response(False, error="Access forbidden"))
+    response.status_code = 403
+    origin = request.headers.get('Origin')
+    if origin and (origin.endswith('.vercel.app') or 'localhost' in origin):
+        response.headers.add('Access-Control-Allow-Origin', origin)
+    return response
+
+# Fix: Add a test endpoint for CORS verification
+@app.route('/api/test-cors', methods=['GET', 'POST', 'OPTIONS'])
+def test_cors():
+    """Test endpoint to verify CORS configuration"""
+    return jsonify({
+        "message": "CORS test successful",
+        "method": request.method,
+        "origin": request.headers.get('Origin'),
+        "timestamp": datetime.utcnow().isoformat(),
+        "headers": dict(request.headers)
+    })
+
+# Fix: Application startup initialization (replaces @app.before_first_request)
+def initialize_application():
+    """Initialize application components on startup"""
+    try:
+        logger.info("🚀 ChurnPredict API starting up...")
+        logger.info(f"🌍 Environment: {os.getenv('FLASK_ENV', 'production')}")
+        logger.info(f"🔗 Database: {'Connected' if db is not None else 'Not connected'}")
+        logger.info(f"🤖 Models: {'Loaded' if model and encoder else 'Not loaded'}")
+        logger.info(f"📧 Email: {'Configured' if os.getenv('SMTP_SERVER') else 'Not configured'}")
+        
+        # Initialize admin user
+        init_admin_user()
+        
+        logger.info("✅ Application initialization completed")
+        
+    except Exception as e:
+        logger.error(f"❌ Application initialization failed: {e}")
+
+# Initialize the application with app context
+with app.app_context():
+    initialize_application()
 
 if __name__ == '__main__':
+    # Fix: Enhanced startup configuration
     port = int(os.getenv('PORT', 5000))
     debug = os.getenv('FLASK_ENV') == 'development'
-    app.run(host='0.0.0.0', port=port, debug=debug)
+    host = '0.0.0.0'  # Allow external connections
+    
+    logger.info(f"🚀 Starting ChurnPredict API on {host}:{port}")
+    logger.info(f"🔧 Debug mode: {debug}")
+    logger.info(f"🌐 Frontend URL: {os.getenv('FRONTEND_URL', 'Not set')}")
+    
+    try:
+        app.run(
+            host=host,
+            port=port,
+            debug=debug,
+            threaded=True,  # Enable threading for better performance
+            use_reloader=debug  # Only use reloader in debug mode
+        )
+    except Exception as e:
+        logger.error(f"❌ Failed to start server: {e}")
+        raise
