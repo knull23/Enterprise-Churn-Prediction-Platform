@@ -30,7 +30,7 @@
 
   "headers": [
     {
-      "source": "/(.*)",
+      "source": "/.*\\.(js|css|ico|png|jpg|jpeg|gif|svg|woff|woff2)$",
       "headers": [
         {
           "key": "X-Content-Type-Options",
