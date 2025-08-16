@@ -35,8 +35,9 @@ CORS(
         "http://localhost:5173",
         "http://localhost:3000",
         "http://127.0.0.1:5174",
+        "https://enterprise-churn-prediction-platform-2-obmn6d6ya.vercel.app",
         "https://enterprise-churn-prediction-platfor-ochre.vercel.app",
-        "https://enterprise-churn-prediction-platform.vercel.app",
+        "https://enterprise-churn-prediction-platform.vercel.app"
         # Add specific Vercel preview URLs as needed instead of wildcard
         # "https://your-app-git-branch.vercel.app",  # Add specific preview URLs
     ]}},
