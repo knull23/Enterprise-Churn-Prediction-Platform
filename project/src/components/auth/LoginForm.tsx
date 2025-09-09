@@ -3,26 +3,27 @@ import { Card } from '../ui/Card';
 import { Input } from '../ui/Input';
 import { Button } from '../ui/Button';
 import { BarChart3, AlertCircle, CheckCircle, Wifi, WifiOff } from 'lucide-react';
-import { LoginCredentials, RegisterCredentials } from '../../types';
+import { LoginCredentials, RegisterCredentials, AuthError } from '../../types';
 import { apiService } from '../../services/api';
 
 interface LoginFormProps {
-  onLogin: (credentials: LoginCredentials) => Promise<boolean>;
+  onLogin: (credentials: LoginCredentials) => Promise<{ success: boolean; error?: AuthError }>;
   onRegister?: (credentials: RegisterCredentials) => Promise<boolean>;
   isLoading: boolean;
-  error?: string | null;
+  error?: AuthError | null;
   onClearError?: () => void;
 }
 
-export const LoginForm: React.FC<LoginFormProps> = ({ 
-  onLogin, 
-  onRegister, 
-  isLoading, 
+
+export const LoginForm: React.FC<LoginFormProps> = ({
+  onLogin,
+  onRegister,
+  isLoading,
   error,
-  onClearError 
+  onClearError
 }) => {
   const [isRegistering, setIsRegistering] = useState(false);
-  const [localError, setLocalError] = useState('');
+  const [localError, setLocalError] = useState<AuthError | null>(null);
   const [connectionStatus, setConnectionStatus] = useState<'checking' | 'connected' | 'error'>('checking');
   const [apiInfo, setApiInfo] = useState<any>(null);
 
@@ -32,17 +33,19 @@ export const LoginForm: React.FC<LoginFormProps> = ({
     password: ''
   });
 
+  // Sync external error from useAuth into local state (for rendering)
+  useEffect(() => {
+    if (error) {
+      setLocalError(error);
+    }
+  }, [error]);
+
   // Check API connection on mount
   useEffect(() => {
     const checkConnection = async () => {
       try {
         setConnectionStatus('checking');
-        console.log('Checking API connection...');
-        
-        // Test basic connectivity
         const health = await apiService.healthCheck();
-        console.log('Health check result:', health);
-        
         if (health && health.status !== 'error') {
           setConnectionStatus('connected');
           setApiInfo(health);
@@ -50,75 +53,76 @@ export const LoginForm: React.FC<LoginFormProps> = ({
           setConnectionStatus('error');
           setApiInfo(health);
         }
-      } catch (error) {
-        console.error('Connection check failed:', error);
+      } catch (err) {
         setConnectionStatus('error');
-        setApiInfo({ error: error instanceof Error ? error.message : 'Connection failed' });
+        setApiInfo({ error: err instanceof Error ? err.message : 'Connection failed' });
       }
     };
 
     checkConnection();
   }, []);
 
-  // Clear errors when switching between login/register
+  // Clear errors only when switching between login/register
   useEffect(() => {
-    setLocalError('');
+    setLocalError(null);
     onClearError?.();
+    setFormData({ name: '', email: '', password: '' });
   }, [isRegistering, onClearError]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLocalError('');
-    onClearError?.();
+
+    // Clear only local validation errors
+    setLocalError(null);
 
     // Validation
     if (!formData.email?.trim()) {
-      setLocalError('Email is required');
+      setLocalError({ field: 'email', message: 'Email is required' });
       return;
     }
-
     if (!formData.password?.trim()) {
-      setLocalError('Password is required');
+      setLocalError({ field: 'password', message: 'Password is required' });
       return;
     }
-
     if (isRegistering && !formData.name?.trim()) {
-      setLocalError('Name is required');
+      setLocalError({ field: 'form', message: 'Name is required' });
       return;
     }
 
-    // Email validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(formData.email)) {
-      setLocalError('Please enter a valid email address');
+      setLocalError({ field: 'email', message: 'Please enter a valid email address' });
       return;
     }
-
-    // Password validation
     if (formData.password.length < 6) {
-      setLocalError('Password must be at least 6 characters long');
+      setLocalError({ field: 'password', message: 'Password must be at least 6 characters long' });
       return;
     }
 
     try {
-      console.log(`Attempting ${isRegistering ? 'registration' : 'login'}...`);
-      
       const success = isRegistering
         ? await onRegister?.(formData)
         : await onLogin({ email: formData.email, password: formData.password });
 
       if (!success) {
-        // Error will be handled by the auth context and passed via props
+        // If external error exists, it will be displayed
+        if (!error) {
+          setLocalError({ field: 'form', message: 'Incorrect email or password. Try again.' });
+        }
         console.log(`${isRegistering ? 'Registration' : 'Login'} was not successful`);
       } else {
-        console.log(`${isRegistering ? 'Registration' : 'Login'} successful!`);
-        // Clear form on success
         setFormData({ name: '', email: '', password: '' });
       }
     } catch (err) {
       console.error(`${isRegistering ? 'Registration' : 'Login'} error:`, err);
-      setLocalError('An unexpected error occurred. Please try again.');
+      setLocalError({ field: 'form', message: 'An unexpected error occurred. Please try again.' });
     }
+  };
+
+  const onInputChange = (field: keyof RegisterCredentials, value: string) => {
+    // Clear only local validation errors on input
+    setLocalError(null);
+    setFormData(prev => ({ ...prev, [field]: value }));
   };
 
   const fillDemoCredentials = () => {
@@ -127,11 +131,10 @@ export const LoginForm: React.FC<LoginFormProps> = ({
       email: 'admin@churnpredict.com',
       password: 'admin123'
     });
-    setLocalError('');
-    onClearError?.();
+    setLocalError(null);
   };
 
-  const displayError = error || localError;
+  const activeError = localError || null;
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 py-12 px-4 sm:px-6 lg:px-8">
@@ -152,7 +155,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
         {/* Connection Status */}
         <div className="text-center">
           <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm ${
-            connectionStatus === 'connected' 
+            connectionStatus === 'connected'
               ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
               : connectionStatus === 'error'
               ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
@@ -166,8 +169,6 @@ export const LoginForm: React.FC<LoginFormProps> = ({
               <><Wifi className="w-4 h-4 animate-pulse" /> Checking Connection...</>
             )}
           </div>
-          
-          {/* API URL Display for debugging */}
           <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
             API: {apiService.getApiUrl()}
           </p>
@@ -193,7 +194,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
           </div>
         )}
 
-        {/* Login Form */}
+        {/* Login/Register Form */}
         <Card>
           <form onSubmit={handleSubmit} className="space-y-6">
             {isRegistering && (
@@ -201,10 +202,11 @@ export const LoginForm: React.FC<LoginFormProps> = ({
                 label="Full Name"
                 type="text"
                 value={formData.name}
-                onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
+                onChange={(e) => onInputChange('name', e.target.value)}
                 required
                 placeholder="Enter your full name"
                 disabled={isLoading || connectionStatus === 'error'}
+                error={activeError?.field === 'form' && activeError.message.includes('Name') ? activeError.message : undefined}
               />
             )}
 
@@ -212,35 +214,40 @@ export const LoginForm: React.FC<LoginFormProps> = ({
               label="Email Address"
               type="email"
               value={formData.email}
-              onChange={(e) => setFormData((prev) => ({ ...prev, email: e.target.value }))}
+              onChange={(e) => onInputChange('email', e.target.value)}
               required
               autoComplete="email"
               placeholder="Enter your email"
               disabled={isLoading || connectionStatus === 'error'}
+              error={activeError?.field === 'email' ? activeError.message : undefined}
             />
 
             <Input
               label="Password"
               type="password"
               value={formData.password}
-              onChange={(e) => setFormData((prev) => ({ ...prev, password: e.target.value }))}
+              onChange={(e) => onInputChange('password', e.target.value)}
               required
               autoComplete={isRegistering ? "new-password" : "current-password"}
               placeholder={isRegistering ? "Create a password (min 6 characters)" : "Enter your password"}
               disabled={isLoading || connectionStatus === 'error'}
+              error={activeError?.field === 'password' ? activeError.message : undefined}
             />
 
-            {/* Error Display */}
-            {displayError && (
-              <div className="flex items-start gap-2 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+            {/* Form-Level Error */}
+            {activeError?.field === 'form' && (
+              <div
+                role="alert"
+                aria-live="assertive"
+                className="flex items-start gap-2 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg"
+              >
                 <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" />
                 <div className="text-sm text-red-700 dark:text-red-300">
-                  {displayError}
+                  {activeError.message}
                 </div>
               </div>
             )}
 
-            {/* Submit Button */}
             <Button
               type="submit"
               isLoading={isLoading}
@@ -252,17 +259,14 @@ export const LoginForm: React.FC<LoginFormProps> = ({
             </Button>
           </form>
 
-          {/* Switch between Login/Register */}
+          {/* Switch mode */}
           <div className="mt-4 text-center">
             <p className="text-sm text-gray-600 dark:text-gray-400">
               {isRegistering ? 'Already have an account?' : "Don't have an account?"}{' '}
               <button
                 type="button"
                 className="text-blue-600 hover:underline dark:text-blue-400 font-medium"
-                onClick={() => {
-                  setIsRegistering(!isRegistering);
-                  setFormData({ name: '', email: '', password: '' });
-                }}
+                onClick={() => setIsRegistering(!isRegistering)}
                 disabled={isLoading}
               >
                 {isRegistering ? 'Sign In' : 'Create Account'}
@@ -294,7 +298,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
             </div>
           )}
 
-          {/* API Status Info */}
+          {/* API Status */}
           {connectionStatus === 'connected' && apiInfo && (
             <div className="mt-4 p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
               <div className="flex items-center gap-2">
@@ -312,7 +316,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
           )}
         </Card>
 
-        {/* Debug Information */}
+        {/* Debug Info */}
         {process.env.NODE_ENV === 'development' && (
           <div className="mt-4 p-3 bg-gray-100 dark:bg-gray-800 rounded-lg text-xs">
             <details>

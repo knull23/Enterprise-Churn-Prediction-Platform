@@ -68,6 +68,9 @@ function AppContent() {
     if (user) {
       loadDashboardStats();
       loadHistory();
+    } else {
+      // reset to dashboard when user logs out
+      setActiveTab('dashboard');
     }
   }, [user]);
 
@@ -147,7 +150,7 @@ function AppContent() {
     }
   };
 
-  // Enhanced loading screen with better UX
+  // Loading screen
   if (authLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
@@ -166,6 +169,8 @@ function AppContent() {
 
   // Show LoginForm when user is not authenticated
   if (!user) {
+    console.log("Auth Error from useAuth:", error);
+    
     return (
       <LoginForm 
         onLogin={login} 
@@ -233,7 +238,7 @@ function AppContent() {
                   </Button>
                   <Button onClick={() => setActiveTab('settings')} className="w-full justify-start" variant="secondary">
                     <Shield className="w-4 h-4 mr-2" />
-                    Notification Settings
+                    Settings
                   </Button>
 
                   {user && user.role === 'admin' && (
@@ -366,4 +371,3 @@ function App() {
 }
 
 export default App;
-

@@ -16,14 +16,20 @@ export interface RegisterCredentials {
   password: string;
 }
 
+// useAuth.tsx
+export interface AuthError {
+  field?: 'email' | 'password' | 'form';
+  message: string;
+}
+
+
 export interface AuthContextType {
   user: User | null;
-  login: (credentials: LoginCredentials) => Promise<boolean>;
+  login: (credentials: LoginCredentials) => Promise<{ success: boolean; error?: AuthError }>;
   register: (credentials: RegisterCredentials) => Promise<boolean>;
   logout: () => void;
   isLoading: boolean;
-  setUser: (user: User | null) => void;
-  error: string | null;
+  error: AuthError | null;
   clearError: () => void;
 }
 

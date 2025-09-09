@@ -16,6 +16,7 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from loguru import logger
+from services.notification_service import notification_service
 
 # Load environment variables
 load_dotenv()
@@ -91,6 +92,7 @@ def connect_mongodb():
 # Initialize MongoDB connection
 client, predictions_collection, users_collection = connect_mongodb()
 db = client.churn_prediction if client else None
+notifications_collection = db["notification_settings"]
 
 # Fix: Better base directory handling for different deployment environments
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -185,6 +187,59 @@ try:
 except Exception as e:
     logger.error(f"❌ Failed to load ML models: {e}")
     model = encoder = scaler = None
+
+
+@app.route("/notifications/<user_id>", methods=["GET"])
+def get_notification_settings(user_id):
+    """Fetch user notification settings from MongoDB"""
+    settings = notifications_collection.find_one({"user_id": user_id}, {"_id": 0})
+    
+    if not settings:
+        # return default settings if not found
+        settings = {
+            "emailEnabled": True,
+            "smsEnabled": False,
+            "threshold": "0.7",
+            "frequency": "immediate",
+            "emailAddress": None,
+            "phoneNumber": None
+        }
+        # insert default settings in DB for user
+        notifications_collection.insert_one({"user_id": user_id, **settings})
+
+    return jsonify({"success": True, "data": settings})
+
+
+@app.route("/notifications/<user_id>", methods=["PUT"])
+def update_notification_settings(user_id):
+    """Update user notification settings in MongoDB"""
+    data = request.json
+    if not data:
+        return jsonify({"success": False, "error": "No data provided"}), 400
+
+    # ensure defaults if some fields missing
+    updated_settings = {
+        "emailEnabled": data.get("emailEnabled", False),
+        "smsEnabled": data.get("smsEnabled", False),
+        "threshold": data.get("threshold", "0.7"),
+        "frequency": data.get("frequency", "immediate"),
+        "emailAddress": data.get("emailAddress", None),
+        "phoneNumber": data.get("phoneNumber", None),
+    }
+
+    notifications_collection.update_one(
+        {"user_id": user_id},
+        {"$set": updated_settings},
+        upsert=True
+    )
+
+    try:
+        if hasattr(notification_service, "apply_settings"):
+            notification_service.apply_settings(user_id, updated_settings)
+    except Exception as e:
+        app.logger.warning(f"apply_settings not implemented: {e}")
+
+    return jsonify({"success": True, "data": updated_settings})
 
 # Fix: Enhanced email sending with better error handling
 def send_welcome_email(to_email, name):
@@ -1000,4 +1055,6 @@ if __name__ == '__main__':
     logger.info(f"🌐 Frontend URL: {os.getenv('FRONTEND_URL', 'Not set')}")
 
     app.run(host=host, port=port, debug=debug, threaded=True, use_reloader=debug)
+    
+
     

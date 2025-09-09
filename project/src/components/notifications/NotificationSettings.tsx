@@ -1,13 +1,11 @@
+// src/components/notifications/NotificationSettings.tsx
 import React, { useEffect, useState } from 'react';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { Select } from '../ui/Select';
 import { Bell, Mail, MessageSquare } from 'lucide-react';
-
-interface NotificationSettingsProps {
-  onSave?: (settings: any) => void; // optional external handler
-}
+import { useAuth } from '../../hooks/useAuth';
 
 const thresholdOptions = [
   { value: '0.5', label: '50% - Medium Risk' },
@@ -23,7 +21,10 @@ const frequencyOptions = [
   { value: 'weekly', label: 'Weekly Summary' }
 ];
 
-export const NotificationSettings: React.FC<NotificationSettingsProps> = ({ onSave }) => {
+export const NotificationSettings: React.FC = () => {
+  const { user } = useAuth();
+  const userId = user?.id || "demo-user"; // fallback for now
+
   const [settings, setSettings] = useState({
     emailEnabled: true,
     smsEnabled: false,
@@ -33,23 +34,60 @@ export const NotificationSettings: React.FC<NotificationSettingsProps> = ({ onSa
     phoneNumber: ''
   });
 
-  const [saved, setSaved] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
 
+  // 🔹 Load settings from backend
   useEffect(() => {
-    const local = localStorage.getItem('notificationSettings');
-    if (local) setSettings(JSON.parse(local));
-  }, []);
+    const fetchSettings = async () => {
+      try {
+        const res = await fetch(`${import.meta.env.VITE_API_URL}/notifications/${userId}`);
+        const json = await res.json();
+        if (json.success && json.data) {
+          setSettings(json.data);
+        } else {
+          console.warn("No saved settings found, using defaults.");
+        }
+      } catch (err) {
+        console.error("Failed to fetch notification settings:", err);
+        setMessage("⚠️ Could not load settings.");
+      }
+    };
+    if (userId) fetchSettings();
+  }, [userId]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  // 🔹 Save settings
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    localStorage.setItem('notificationSettings', JSON.stringify(settings));
-    setSaved(true);
-    if (onSave) onSave(settings);
-    setTimeout(() => setSaved(false), 3000);
+    setLoading(true);
+    setMessage(null);
+    try {
+      const res = await fetch(`${import.meta.env.VITE_API_URL}/notifications/${userId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(settings)
+      });
+      const json = await res.json();
+      if (json.success) {
+        setMessage("✅ Settings saved!");
+      } else {
+        setMessage(json.error || "❌ Failed to save settings.");
+      }
+    } catch (err) {
+      console.error("Error saving settings:", err);
+      setMessage("❌ Error saving settings.");
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const isEmailValid = settings.emailAddress === '' || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(settings.emailAddress);
-  const isPhoneValid = settings.phoneNumber === '' || /^\+?[0-9\s\-()]{7,}$/.test(settings.phoneNumber);
+  // 🔹 Validation
+  const isEmailValid =
+    settings.emailAddress === '' ||
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(settings.emailAddress);
+  const isPhoneValid =
+    settings.phoneNumber === '' ||
+    /^\+?[0-9\s\-()]{7,}$/.test(settings.phoneNumber);
 
   return (
     <Card>
@@ -65,29 +103,40 @@ export const NotificationSettings: React.FC<NotificationSettingsProps> = ({ onSa
           <Select
             label="Alert Threshold"
             value={settings.threshold}
-            onChange={(e) => setSettings(prev => ({ ...prev, threshold: e.target.value }))}
+            onChange={(e) =>
+              setSettings((prev) => ({ ...prev, threshold: e.target.value }))
+            }
             options={thresholdOptions}
           />
-          
           <Select
             label="Notification Frequency"
             value={settings.frequency}
-            onChange={(e) => setSettings(prev => ({ ...prev, frequency: e.target.value }))}
+            onChange={(e) =>
+              setSettings((prev) => ({ ...prev, frequency: e.target.value }))
+            }
             options={frequencyOptions}
           />
         </div>
 
+        {/* Email Section */}
         <div className="space-y-4">
           <div className="flex items-center space-x-3">
             <input
               type="checkbox"
               id="emailEnabled"
               checked={settings.emailEnabled}
-              onChange={(e) => setSettings(prev => ({ ...prev, emailEnabled: e.target.checked }))}
+              onChange={(e) =>
+                setSettings((prev) => ({
+                  ...prev,
+                  emailEnabled: e.target.checked
+                }))
+              }
               className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-              aria-label="Enable email notifications"
             />
-            <label htmlFor="emailEnabled" className="flex items-center text-sm font-medium text-gray-700 dark:text-gray-300">
+            <label
+              htmlFor="emailEnabled"
+              className="flex items-center text-sm font-medium"
+            >
               <Mail className="w-4 h-4 mr-2" />
               Email Notifications
             </label>
@@ -98,24 +147,37 @@ export const NotificationSettings: React.FC<NotificationSettingsProps> = ({ onSa
               label="Email Address"
               type="email"
               value={settings.emailAddress}
-              onChange={(e) => setSettings(prev => ({ ...prev, emailAddress: e.target.value }))}
+              onChange={(e) =>
+                setSettings((prev) => ({
+                  ...prev,
+                  emailAddress: e.target.value
+                }))
+              }
               placeholder="alerts@yourcompany.com"
               error={!isEmailValid ? "Invalid email format" : ""}
             />
           )}
         </div>
 
+        {/* SMS Section */}
         <div className="space-y-4">
           <div className="flex items-center space-x-3">
             <input
               type="checkbox"
               id="smsEnabled"
               checked={settings.smsEnabled}
-              onChange={(e) => setSettings(prev => ({ ...prev, smsEnabled: e.target.checked }))}
+              onChange={(e) =>
+                setSettings((prev) => ({
+                  ...prev,
+                  smsEnabled: e.target.checked
+                }))
+              }
               className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-              aria-label="Enable SMS notifications"
             />
-            <label htmlFor="smsEnabled" className="flex items-center text-sm font-medium text-gray-700 dark:text-gray-300">
+            <label
+              htmlFor="smsEnabled"
+              className="flex items-center text-sm font-medium"
+            >
               <MessageSquare className="w-4 h-4 mr-2" />
               SMS Notifications
             </label>
@@ -126,7 +188,12 @@ export const NotificationSettings: React.FC<NotificationSettingsProps> = ({ onSa
               label="Phone Number"
               type="tel"
               value={settings.phoneNumber}
-              onChange={(e) => setSettings(prev => ({ ...prev, phoneNumber: e.target.value }))}
+              onChange={(e) =>
+                setSettings((prev) => ({
+                  ...prev,
+                  phoneNumber: e.target.value
+                }))
+              }
               placeholder="+1 (555) 123-4567"
               error={!isPhoneValid ? "Invalid phone number" : ""}
             />
@@ -134,11 +201,24 @@ export const NotificationSettings: React.FC<NotificationSettingsProps> = ({ onSa
         </div>
 
         <div className="flex justify-end items-center space-x-4">
-          {saved && (
-            <p className="text-sm text-green-600 dark:text-green-400">Settings saved!</p>
+          {message && (
+            <p
+              className={`text-sm ${
+                message.startsWith("✅")
+                  ? "text-green-600"
+                  : message.startsWith("❌")
+                  ? "text-red-600"
+                  : "text-yellow-600"
+              }`}
+            >
+              {message}
+            </p>
           )}
-          <Button type="submit" disabled={!isEmailValid || !isPhoneValid}>
-            Save Settings
+          <Button
+            type="submit"
+            disabled={loading || !isEmailValid || !isPhoneValid}
+          >
+            {loading ? "Saving..." : "Save Settings"}
           </Button>
         </div>
       </form>

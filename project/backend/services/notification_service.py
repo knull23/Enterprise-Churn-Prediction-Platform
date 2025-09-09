@@ -1,6 +1,6 @@
 import smtplib
-from email.mime.text import MimeText
-from email.mime.multipart import MimeMultipart
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 from twilio.rest import Client
 import os
 import logging
@@ -9,11 +9,13 @@ logger = logging.getLogger(__name__)
 
 class NotificationService:
     def __init__(self):
+        # SMTP config
         self.smtp_host = os.getenv('SMTP_HOST')
         self.smtp_port = int(os.getenv('SMTP_PORT', 587))
         self.smtp_user = os.getenv('SMTP_USER')
         self.smtp_pass = os.getenv('SMTP_PASS')
         
+        # Twilio config
         self.twilio_sid = os.getenv('TWILIO_ACCOUNT_SID')
         self.twilio_token = os.getenv('TWILIO_AUTH_TOKEN')
         self.twilio_phone = os.getenv('TWILIO_PHONE_NUMBER')
@@ -32,14 +34,14 @@ class NotificationService:
             return False
             
         try:
-            msg = MimeMultipart()
+            msg = MIMEMultipart()
             msg['From'] = self.smtp_user
             msg['To'] = to_email
             msg['Subject'] = subject
             
             # Create HTML email body
             html_body = self._create_email_template(message, prediction_data)
-            msg.attach(MimeText(html_body, 'html'))
+            msg.attach(MIMEText(html_body, 'html'))
             
             server = smtplib.SMTP(self.smtp_host, self.smtp_port)
             server.starttls()
@@ -63,7 +65,7 @@ class NotificationService:
             return False
             
         try:
-            message = self.twilio_client.messages.create(
+            self.twilio_client.messages.create(
                 body=message,
                 from_=self.twilio_phone,
                 to=to_phone
@@ -190,6 +192,11 @@ class NotificationService:
         """
         
         return html
+
+    def apply_settings(self, user_id, settings):
+        """Optional: Validate and apply user settings (placeholder)"""
+        logger.info(f"Applied notification settings for {user_id}: {settings}")
+
 
 # Global notification service instance
 notification_service = NotificationService()

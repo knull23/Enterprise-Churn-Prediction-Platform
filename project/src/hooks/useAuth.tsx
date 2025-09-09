@@ -1,129 +1,114 @@
-import {
-  useState,
-  useEffect,
-  createContext,
-  useContext,
-  ReactNode,
-} from 'react';
-import {
-  User,
-  LoginCredentials,
-  RegisterCredentials,
-  AuthContextType,
-} from '../types';
+import { useState, useEffect, createContext, useContext, ReactNode } from 'react';
+import { User, LoginCredentials, RegisterCredentials, AuthContextType } from '../types';
 import { apiService } from '../services/api';
 
-interface ExtendedAuthContextType extends AuthContextType {
+export interface AuthError {
+  field?: 'email' | 'password' | 'form';
+  message: string;
+}
+
+interface ExtendedAuthContextType extends Omit<AuthContextType, 'error'> {
   setUser: (user: User | null) => void;
+  login: (credentials: LoginCredentials) => Promise<{ success: boolean; error?: AuthError }>;
   register: (credentials: RegisterCredentials) => Promise<boolean>;
-  error: string | null;
+  error: AuthError | null;
   clearError: () => void;
 }
 
-const AuthContext = createContext<ExtendedAuthContextType | undefined>(
-  undefined
-);
+const AuthContext = createContext<ExtendedAuthContextType | undefined>(undefined);
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
+  if (!context) throw new Error('useAuth must be used within an AuthProvider');
   return context;
 };
 
 export const useAuthProvider = (): ExtendedAuthContextType => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<AuthError | null>(null);
 
   const clearError = () => setError(null);
 
   useEffect(() => {
     const initializeAuth = async () => {
       try {
-        console.log('Initializing auth...');
         const token = apiService.getToken();
-        
         if (token) {
-          console.log('Token found, verifying...');
           try {
             const userData = await apiService.verifyToken(token);
-            console.log('Token verified, user data:', userData);
             setUser(userData);
-          } catch (verifyError) {
-            console.log('Token verification failed:', verifyError);
-            // Clear invalid token
+          } catch {
             apiService.clearToken();
             setUser(null);
           }
         } else {
-          console.log('No token found');
           setUser(null);
         }
-      } catch (error) {
-        console.error('Auth initialization failed:', error);
+      } catch {
         setUser(null);
       } finally {
         setIsLoading(false);
       }
     };
-
     initializeAuth();
   }, []);
 
-  const login = async (credentials: LoginCredentials): Promise<boolean> => {
+  const parseError = (rawError: unknown): AuthError => {
+    if (!rawError) return { field: 'form', message: 'Unknown error occurred' };
+    if (typeof rawError === 'string') return { field: 'form', message: rawError };
+    if (typeof rawError === 'object' && 'message' in rawError && typeof (rawError as any).message === 'string') {
+      return { field: 'form', message: (rawError as any).message };
+    }
+    return { field: 'form', message: 'Unknown error occurred' };
+  };
+
+  const login = async (credentials: LoginCredentials): Promise<{ success: boolean; error?: AuthError }> => {
     try {
-      console.log('Attempting login...');
       clearError();
       setIsLoading(true);
-
       const response = await apiService.login(credentials);
-      console.log('Login response:', response);
 
       if (response.success && response.data) {
-        console.log('Login successful, setting user data');
         setUser(response.data.user);
-        return true;
+        return { success: true };
       } else {
-        console.log('Login failed - no success or data');
-        setError(response.error || 'Login failed');
-        return false;
+        const apiError: AuthError = {
+          field: response.error?.toLowerCase().includes('email')
+            ? 'email'
+            : response.error?.toLowerCase().includes('password')
+            ? 'password'
+            : 'form',
+          message: response.error || 'Login failed',
+        };
+        setError(apiError);
+        return { success: false, error: apiError };
       }
-    } catch (error) {
-      console.error('Login error:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Login failed';
-      setError(errorMessage);
-      return false;
+    } catch (err) {
+      const apiError: AuthError = { field: 'form', message: err instanceof Error ? err.message : 'Login failed' };
+      setError(apiError);
+      return { success: false, error: apiError };
     } finally {
       setIsLoading(false);
     }
   };
 
-  const register = async (
-    credentials: RegisterCredentials
-  ): Promise<boolean> => {
+  const register = async (credentials: RegisterCredentials): Promise<boolean> => {
     try {
-      console.log('Attempting registration...');
       clearError();
       setIsLoading(true);
-
       const response = await apiService.register(credentials);
-      console.log('Registration response:', response);
 
       if (response.success && response.data) {
-        console.log('Registration successful, setting user data');
         setUser(response.data.user);
         return true;
       } else {
-        console.log('Registration failed - no success or data');
-        setError(response.error || 'Registration failed');
+        const apiError: AuthError = { field: 'form', message: response.error || 'Registration failed' };
+        setError(apiError);
         return false;
       }
-    } catch (error) {
-      console.error('Registration error:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Registration failed';
-      setError(errorMessage);
+    } catch (err) {
+      setError(parseError(err));
       return false;
     } finally {
       setIsLoading(false);
@@ -131,7 +116,6 @@ export const useAuthProvider = (): ExtendedAuthContextType => {
   };
 
   const logout = () => {
-    console.log('Logging out...');
     clearError();
     apiService.clearToken();
     setUser(null);
@@ -155,8 +139,6 @@ interface AuthProviderProps {
 
 export const AuthProvider = ({ children }: AuthProviderProps) => {
   const auth = useAuthProvider();
-  return (
-    <AuthContext.Provider value={auth}>{children}</AuthContext.Provider>
-  );
+  return <AuthContext.Provider value={auth}>{children}</AuthContext.Provider>;
 };
 
