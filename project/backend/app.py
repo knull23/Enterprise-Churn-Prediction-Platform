@@ -189,82 +189,55 @@ except Exception as e:
     logger.error(f"❌ Failed to load ML models: {e}")
     model = encoder = scaler = None
 
+DEFAULT_SETTINGS = {
+    "emailEnabled": True,
+    "smsEnabled": False,
+    "threshold": "0.7",
+    "frequency": "immediate",
+    "emailAddress": None,
+    "phoneNumber": None
+}
 
-@app.route("/notifications/<user_id>", methods=["GET", "OPTIONS"])
-@cross_origin(
-    origins=[
-        "http://localhost:5175",
-        "http://localhost:5174",
-        "http://localhost:5173",
-        "http://localhost:3000",
-        "https://enterprise-churn-prediction-platform-2-obmn6d6ya.vercel.app",
-        "https://enterprise-churn-prediction-platfor-ochre.vercel.app",
-        "https://enterprise-churn-prediction-platform.vercel.app"
-    ],
-    supports_credentials=True,
-    methods=["GET", "PUT", "OPTIONS"]
-)
-def get_notification_settings(user_id):
-    """Fetch user notification settings from MongoDB"""
-    settings = notifications_collection.find_one({"user_id": user_id}, {"_id": 0})
-    
-    if not settings:
-        settings = {
-            "emailEnabled": True,
-            "smsEnabled": False,
-            "threshold": "0.7",
-            "frequency": "immediate",
-            "emailAddress": None,
-            "phoneNumber": None
+# 🔹 Get or update notification settings
+@app.route("/api/notifications/<user_id>", methods=["GET", "PUT", "OPTIONS"])
+def notification_settings(user_id):
+    if request.method == "GET":
+        settings = notifications_collection.find_one({"user_id": user_id}, {"_id": 0})
+        if not settings:
+            # Insert default settings if user does not exist
+            settings = DEFAULT_SETTINGS.copy()
+            notifications_collection.insert_one({"user_id": user_id, **settings})
+        return jsonify({"success": True, "data": settings})
+
+    elif request.method == "PUT":
+        data = request.get_json()
+        if not data:
+            return jsonify({"success": False, "error": "No data provided"}), 400
+
+        # Build update dict
+        updated_settings = {
+            "emailEnabled": data.get("emailEnabled", DEFAULT_SETTINGS["emailEnabled"]),
+            "smsEnabled": data.get("smsEnabled", DEFAULT_SETTINGS["smsEnabled"]),
+            "threshold": data.get("threshold", DEFAULT_SETTINGS["threshold"]),
+            "frequency": data.get("frequency", DEFAULT_SETTINGS["frequency"]),
+            "emailAddress": data.get("emailAddress", DEFAULT_SETTINGS["emailAddress"]),
+            "phoneNumber": data.get("phoneNumber", DEFAULT_SETTINGS["phoneNumber"]),
         }
-        notifications_collection.insert_one({"user_id": user_id, **settings})
 
-    return jsonify({"success": True, "data": settings})
+        notifications_collection.update_one(
+            {"user_id": user_id},
+            {"$set": updated_settings},
+            upsert=True
+        )
 
+        # Optional: call a notification service if implemented
+        try:
+            if hasattr(notification_service, "apply_settings"):
+                notification_service.apply_settings(user_id, updated_settings)
+        except Exception as e:
+            app.logger.warning(f"apply_settings not implemented: {e}")
 
-@app.route("/notifications/<user_id>", methods=["PUT", "OPTIONS"])
-@cross_origin(
-    origins=[
-        "http://localhost:5175",
-        "http://localhost:5174",
-        "http://localhost:5173",
-        "http://localhost:3000",
-        "https://enterprise-churn-prediction-platform-2-obmn6d6ya.vercel.app",
-        "https://enterprise-churn-prediction-platfor-ochre.vercel.app",
-        "https://enterprise-churn-prediction-platform.vercel.app"
-    ],
-    supports_credentials=True,
-    methods=["GET", "PUT", "OPTIONS"]
-)
-def update_notification_settings(user_id):
-    """Update user notification settings in MongoDB"""
-    data = request.json
-    if not data:
-        return jsonify({"success": False, "error": "No data provided"}), 400
-
-    updated_settings = {
-        "emailEnabled": data.get("emailEnabled", False),
-        "smsEnabled": data.get("smsEnabled", False),
-        "threshold": data.get("threshold", "0.7"),
-        "frequency": data.get("frequency", "immediate"),
-        "emailAddress": data.get("emailAddress", None),
-        "phoneNumber": data.get("phoneNumber", None),
-    }
-
-    notifications_collection.update_one(
-        {"user_id": user_id},
-        {"$set": updated_settings},
-        upsert=True
-    )
-
-    try:
-        if hasattr(notification_service, "apply_settings"):
-            notification_service.apply_settings(user_id, updated_settings)
-    except Exception as e:
-        app.logger.warning(f"apply_settings not implemented: {e}")
-
-    return jsonify({"success": True, "data": updated_settings})
-
+        return jsonify({"success": True, "data": updated_settings})
 
 # Fix: Enhanced email sending with better error handling
 def send_welcome_email(to_email, name):
