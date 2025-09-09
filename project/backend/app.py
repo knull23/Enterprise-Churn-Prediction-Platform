@@ -197,47 +197,51 @@ DEFAULT_SETTINGS = {
     "phoneNumber": None
 }
 
-# 🔹 Get or update notification settings
-@app.route("/api/notifications/<user_id>", methods=["GET", "PUT", "OPTIONS"])
+@app.route("/api/notifications/<user_id>", methods=["GET", "PUT"])
 def notification_settings(user_id):
-    if request.method == "GET":
-        settings = notifications_collection.find_one({"user_id": user_id}, {"_id": 0})
-        if not settings:
-            # Insert default settings if user does not exist
-            settings = DEFAULT_SETTINGS.copy()
-            notifications_collection.insert_one({"user_id": user_id, **settings})
-        return jsonify({"success": True, "data": settings})
+    try:
+        # Handle GET
+        if request.method == "GET":
+            settings = notifications_collection.find_one({"user_id": user_id}, {"_id": 0})
+            if not settings:
+                settings = DEFAULT_SETTINGS.copy()
+                notifications_collection.insert_one({"user_id": user_id, **settings})
+            return jsonify({"success": True, "data": settings})
 
-    elif request.method == "PUT":
-        data = request.get_json()
-        if not data:
-            return jsonify({"success": False, "error": "No data provided"}), 400
+        # Handle PUT
+        if request.method == "PUT":
+            data = request.get_json()
+            if not data:
+                return jsonify({"success": False, "error": "No data provided"}), 400
 
-        # Build update dict
-        updated_settings = {
-            "emailEnabled": data.get("emailEnabled", DEFAULT_SETTINGS["emailEnabled"]),
-            "smsEnabled": data.get("smsEnabled", DEFAULT_SETTINGS["smsEnabled"]),
-            "threshold": data.get("threshold", DEFAULT_SETTINGS["threshold"]),
-            "frequency": data.get("frequency", DEFAULT_SETTINGS["frequency"]),
-            "emailAddress": data.get("emailAddress", DEFAULT_SETTINGS["emailAddress"]),
-            "phoneNumber": data.get("phoneNumber", DEFAULT_SETTINGS["phoneNumber"]),
-        }
+            updated_settings = {
+                "emailEnabled": data.get("emailEnabled", DEFAULT_SETTINGS["emailEnabled"]),
+                "smsEnabled": data.get("smsEnabled", DEFAULT_SETTINGS["smsEnabled"]),
+                "threshold": data.get("threshold", DEFAULT_SETTINGS["threshold"]),
+                "frequency": data.get("frequency", DEFAULT_SETTINGS["frequency"]),
+                "emailAddress": data.get("emailAddress", DEFAULT_SETTINGS["emailAddress"]),
+                "phoneNumber": data.get("phoneNumber", DEFAULT_SETTINGS["phoneNumber"]),
+            }
 
-        notifications_collection.update_one(
-            {"user_id": user_id},
-            {"$set": updated_settings},
-            upsert=True
-        )
+            notifications_collection.update_one(
+                {"user_id": user_id},
+                {"$set": updated_settings},
+                upsert=True
+            )
 
-        # Optional: call a notification service if implemented
-        try:
-            if hasattr(notification_service, "apply_settings"):
-                notification_service.apply_settings(user_id, updated_settings)
-        except Exception as e:
-            app.logger.warning(f"apply_settings not implemented: {e}")
+            # Optional: call notification service if exists
+            try:
+                if hasattr(notification_service, "apply_settings"):
+                    notification_service.apply_settings(user_id, updated_settings)
+            except Exception as e:
+                logger.warning(f"apply_settings not implemented: {e}")
 
-        return jsonify({"success": True, "data": updated_settings})
+            return jsonify({"success": True, "data": updated_settings})
 
+    except Exception as e:
+        logger.error(f"Error in notification_settings route: {e}")
+        return jsonify({"success": False, "error": "Internal server error"}), 500
+    
 # Fix: Enhanced email sending with better error handling
 def send_welcome_email(to_email, name):
     try:
