@@ -1,5 +1,6 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+from flask_cors import cross_origin
 from flask_jwt_extended import JWTManager, jwt_required, create_access_token, get_jwt_identity
 from werkzeug.security import check_password_hash, generate_password_hash
 import os
@@ -189,13 +190,25 @@ except Exception as e:
     model = encoder = scaler = None
 
 
-@app.route("/notifications/<user_id>", methods=["GET"])
+@app.route("/notifications/<user_id>", methods=["GET", "OPTIONS"])
+@cross_origin(
+    origins=[
+        "http://localhost:5175",
+        "http://localhost:5174",
+        "http://localhost:5173",
+        "http://localhost:3000",
+        "https://enterprise-churn-prediction-platform-2-obmn6d6ya.vercel.app",
+        "https://enterprise-churn-prediction-platfor-ochre.vercel.app",
+        "https://enterprise-churn-prediction-platform.vercel.app"
+    ],
+    supports_credentials=True,
+    methods=["GET", "PUT", "OPTIONS"]
+)
 def get_notification_settings(user_id):
     """Fetch user notification settings from MongoDB"""
     settings = notifications_collection.find_one({"user_id": user_id}, {"_id": 0})
     
     if not settings:
-        # return default settings if not found
         settings = {
             "emailEnabled": True,
             "smsEnabled": False,
@@ -204,20 +217,31 @@ def get_notification_settings(user_id):
             "emailAddress": None,
             "phoneNumber": None
         }
-        # insert default settings in DB for user
         notifications_collection.insert_one({"user_id": user_id, **settings})
 
     return jsonify({"success": True, "data": settings})
 
 
-@app.route("/notifications/<user_id>", methods=["PUT"])
+@app.route("/notifications/<user_id>", methods=["PUT", "OPTIONS"])
+@cross_origin(
+    origins=[
+        "http://localhost:5175",
+        "http://localhost:5174",
+        "http://localhost:5173",
+        "http://localhost:3000",
+        "https://enterprise-churn-prediction-platform-2-obmn6d6ya.vercel.app",
+        "https://enterprise-churn-prediction-platfor-ochre.vercel.app",
+        "https://enterprise-churn-prediction-platform.vercel.app"
+    ],
+    supports_credentials=True,
+    methods=["GET", "PUT", "OPTIONS"]
+)
 def update_notification_settings(user_id):
     """Update user notification settings in MongoDB"""
     data = request.json
     if not data:
         return jsonify({"success": False, "error": "No data provided"}), 400
 
-    # ensure defaults if some fields missing
     updated_settings = {
         "emailEnabled": data.get("emailEnabled", False),
         "smsEnabled": data.get("smsEnabled", False),
@@ -240,6 +264,7 @@ def update_notification_settings(user_id):
         app.logger.warning(f"apply_settings not implemented: {e}")
 
     return jsonify({"success": True, "data": updated_settings})
+
 
 # Fix: Enhanced email sending with better error handling
 def send_welcome_email(to_email, name):
